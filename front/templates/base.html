@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Manutenção de Ativos{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div class="brand">
+        <span class="brand-icon">⚙</span>
+        <div>
+          <h1>Controle de Manutenção</h1>
+          <p class="subtitle">Gestão de ativos — base e terceiros</p>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="{{ url_for('verificacao') }}" class="nav-link {% if request.endpoint == 'verificacao' %}active{% endif %}">
+          Verificação
+        </a>
+        {% if is_fiscal %}
+        <a href="{{ url_for('edicao') }}" class="nav-link {% if request.endpoint == 'edicao' %}active{% endif %}">
+          Edição
+        </a>
+        {% endif %}
+        {% if current_user %}
+        <span class="user-badge">
+          <a href="{{ url_for('perfil') }}" class="nav-link {% if request.endpoint == 'perfil' %}active{% endif %}">
+            <span class="badge nivel-{{ current_user.nivel }}">{{ current_user.nome }}</span>
+          </a>
+          <a href="{{ url_for('logout') }}" class="nav-link logout-link">Sair</a>
+        </span>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+      <div class="alert {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Dados salvos em <code>C:\manu\back\data\ativos.json</code></p>
+    </div>
+  </footer>
+</body>
+</html>

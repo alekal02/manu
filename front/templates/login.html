@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Manutenção de Ativos</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-page">
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <span class="brand-icon">⚙</span>
+        <h1>Controle de Manutenção</h1>
+        <p>Faça login para continuar</p>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="alert {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <form method="post" class="login-form">
+        <div class="field">
+          <label for="usuario">Usuário</label>
+          <input type="text" id="usuario" name="usuario" placeholder="Digite seu usuário" required autofocus>
+        </div>
+        <div class="field">
+          <label for="senha">Senha</label>
+          <input type="password" id="senha" name="senha" placeholder="Digite sua senha" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Entrar</button>
+      </form>
+
+      <div class="login-hint">
+        <p><strong>Gerente</strong> — usuário: <code>gerente</code> · senha: <code>1234</code></p>
+        <p><strong>Fiscal</strong> — usuário: <code>fiscal</code> · senha: <code>1234</code></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

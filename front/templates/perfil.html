@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Meu Perfil{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <h2>Meu Perfil</h2>
+  <p>Gerencie suas informações e altere sua senha.</p>
+</section>
+
+<div class="perfil-grid">
+  <div class="form-card perfil-info">
+    <h3>Informações da conta</h3>
+    <dl class="info-list">
+      <div class="info-item">
+        <dt>Usuário</dt>
+        <dd>{{ user.usuario }}</dd>
+      </div>
+      <div class="info-item">
+        <dt>Nome</dt>
+        <dd>{{ user.nome }}</dd>
+      </div>
+      <div class="info-item">
+        <dt>Perfil</dt>
+        <dd><span class="badge nivel-{{ user.nivel }}">{{ user.nome }}</span></dd>
+      </div>
+    </dl>
+  </div>
+
+  <div class="form-card">
+    <h3>Alterar senha</h3>
+    <form method="post" class="perfil-form">
+      <div class="field">
+        <label for="senha_atual">Senha atual</label>
+        <input type="password" id="senha_atual" name="senha_atual" required>
+      </div>
+      <div class="field">
+        <label for="nova_senha">Nova senha</label>
+        <input type="password" id="nova_senha" name="nova_senha" minlength="4" required>
+      </div>
+      <div class="field">
+        <label for="confirmar_senha">Confirmar nova senha</label>
+        <input type="password" id="confirmar_senha" name="confirmar_senha" minlength="4" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Salvar nova senha</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Verificação de Ativos{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <h2>Verificação de Ativos</h2>
+  <p>Visualize o status de manutenção de todos os ativos cadastrados.</p>
+</section>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <span class="stat-value">{{ total }}</span>
+    <span class="stat-label">Total de ativos</span>
+  </div>
+  <div class="stat-card warning">
+    <span class="stat-value">{{ total_manutencao }}</span>
+    <span class="stat-label">Em manutenção</span>
+  </div>
+  <div class="stat-card base">
+    <span class="stat-value">{{ na_base|length }}</span>
+    <span class="stat-label">Na base</span>
+  </div>
+  <div class="stat-card terceiros">
+    <span class="stat-value">{{ em_terceiros|length }}</span>
+    <span class="stat-label">Em terceiros</span>
+  </div>
+</div>
+
+{% if em_manutencao %}
+<section class="section">
+  <h3>Ativos em manutenção</h3>
+  <div class="cards-grid">
+    {% for ativo in em_manutencao %}
+    <article class="ativo-card manutencao">
+      <div class="ativo-header">
+        <span class="badge {{ ativo.local }}">{{ 'Base' if ativo.local == 'base' else 'Terceiros' }}</span>
+        <span class="badge status-manutencao">Em manutenção</span>
+      </div>
+      <h4>{{ ativo.nome }}</h4>
+      <p class="codigo">Código: <strong>{{ ativo.codigo }}</strong></p>
+      {% if ativo.ordem_servico %}
+      <p class="ordem-servico">OS: <strong>{{ ativo.ordem_servico }}</strong></p>
+      {% endif %}
+      {% if ativo.observacoes %}
+      <p class="observacoes">{{ ativo.observacoes }}</p>
+      {% else %}
+      <p class="observacoes vazio">Sem observações.</p>
+      {% endif %}
+      <p class="atualizado">Atualizado: {{ ativo.atualizado_em | formatar_data }}</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="section">
+  <h3>Todos os ativos</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Ordem de serviço</th>
+          <th>Nome</th>
+          <th>Status</th>
+          <th>Local</th>
+          <th>Observações</th>
+          <th>Atualizado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ativo in ativos %}
+        <tr class="{% if ativo.em_manutencao %}row-manutencao{% endif %}">
+          <td><strong>{{ ativo.codigo }}</strong></td>
+          <td>{{ ativo.ordem_servico or '—' }}</td>
+          <td>{{ ativo.nome }}</td>
+          <td>
+            {% if ativo.em_manutencao %}
+            <span class="badge status-manutencao">Manutenção</span>
+            {% else %}
+            <span class="badge status-ok">Operacional</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge {{ ativo.local }}">{{ 'Base' if ativo.local == 'base' else 'Terceiros' }}</span>
+          </td>
+          <td class="obs-cell">{{ ativo.observacoes or '—' }}</td>
+          <td class="date-cell">{{ ativo.atualizado_em | formatar_data }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" class="empty">Nenhum ativo cadastrado. Vá em <a href="{{ url_for('edicao') }}">Edição</a> para adicionar.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

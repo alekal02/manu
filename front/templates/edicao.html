@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Edição do Dashboard{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <h2>Edição do Dashboard</h2>
+  <p>Atualize o status de manutenção, local e observações de cada ativo.</p>
+</section>
+
+{% if request.args.get('salvo') %}
+<div class="alert success">Ativo salvo com sucesso!</div>
+{% endif %}
+
+{% if request.args.get('erro') == 'preencha_nome_codigo' %}
+<div class="alert error">Preencha o nome e o código do ativo.</div>
+{% endif %}
+
+<section class="section">
+  <h3>Adicionar novo ativo</h3>
+  <form class="form-card" method="post" action="{{ url_for('novo_ativo') }}">
+    <div class="form-grid">
+      <div class="field">
+        <label for="novo-nome">Nome do ativo</label>
+        <input type="text" id="novo-nome" name="nome" placeholder="Ex: Compressor AR-001" required>
+      </div>
+      <div class="field">
+        <label for="novo-codigo">Código</label>
+        <input type="text" id="novo-codigo" name="codigo" placeholder="Ex: AR-001" required>
+      </div>
+      <div class="field">
+        <label for="novo-os">Ordem de serviço</label>
+        <input type="text" id="novo-os" name="ordem_servico" placeholder="Ex: OS-2026-0042">
+      </div>
+      <div class="field">
+        <label for="novo-local">Local</label>
+        <select id="novo-local" name="local">
+          <option value="base">Base</option>
+          <option value="terceiros">Terceiros</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="novo-manutencao">Em manutenção?</label>
+        <select id="novo-manutencao" name="em_manutencao">
+          <option value="nao">Não</option>
+          <option value="sim">Sim</option>
+        </select>
+      </div>
+      <div class="field full">
+        <label for="novo-obs">Observações</label>
+        <textarea id="novo-obs" name="observacoes" rows="2" placeholder="Descreva o status ou detalhes da manutenção..."></textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Adicionar ativo</button>
+  </form>
+</section>
+
+<section class="section">
+  <h3>Editar ativos existentes</h3>
+  {% if ativos %}
+  <div class="edit-list">
+    {% for ativo in ativos %}
+    <form class="form-card edit-card" method="post" action="{{ url_for('salvar_ativo', ativo_id=ativo.id) }}">
+      <div class="edit-card-header">
+        <div>
+          <h4>{{ ativo.nome }}</h4>
+          <p class="codigo">Código: {{ ativo.codigo }}{% if ativo.ordem_servico %} · OS: {{ ativo.ordem_servico }}{% endif %}</p>
+        </div>
+        <p class="atualizado">Última atualização: {{ ativo.atualizado_em | formatar_data }}</p>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Em manutenção?</label>
+          <select name="em_manutencao">
+            <option value="nao" {% if not ativo.em_manutencao %}selected{% endif %}>Não — Operacional</option>
+            <option value="sim" {% if ativo.em_manutencao %}selected{% endif %}>Sim — Em manutenção</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Local da manutenção</label>
+          <select name="local">
+            <option value="base" {% if ativo.local == 'base' %}selected{% endif %}>Na base</option>
+            <option value="terceiros" {% if ativo.local == 'terceiros' %}selected{% endif %}>Em terceiros</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Ordem de serviço</label>
+          <input type="text" name="ordem_servico" value="{{ ativo.ordem_servico or '' }}" placeholder="Ex: OS-2026-0042">
+        </div>
+        <div class="field full">
+          <label>Observações</label>
+          <textarea name="observacoes" rows="3" placeholder="Informe detalhes sobre a manutenção...">{{ ativo.observacoes }}</textarea>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-secondary">Salvar alterações</button>
+    </form>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty-msg">Nenhum ativo cadastrado ainda. Use o formulário acima para adicionar o primeiro.</p>
+  {% endif %}
+</section>
+{% endblock %}
