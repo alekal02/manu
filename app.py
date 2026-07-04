@@ -8,6 +8,13 @@ BACK = os.path.join(ROOT, "back")
 sys.path.insert(0, BACK)
 os.chdir(BACK)
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(os.path.join(ROOT, ".env"))
+except ImportError:
+    pass
+
 from app import app  # noqa: E402
 
 if __name__ == "__main__":

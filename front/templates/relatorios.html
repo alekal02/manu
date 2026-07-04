@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Relatórios — ManuControl{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div class="page-header-row">
+    <div>
+      <p class="dash-eyebrow">Filial {{ current_user.base_codigo }}</p>
+      <h2>Relatórios</h2>
+      <p>Acompanhe as atualizações diárias e o controle mensal dos ativos.</p>
+    </div>
+    <div class="page-header-actions">
+      <a href="{{ url_for('relatorio_pdf', aba=aba, data=data_ref, ref_mes=ref_mes) }}" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Baixar PDF
+      </a>
+    </div>
+  </div>
+</section>
+
+<div class="panel">
+  <div class="panel-body">
+    <div data-tabs>
+      <div class="tabs">
+        <a href="{{ url_for('relatorios', aba='diario', data=data_ref) }}" class="tab-btn {% if aba != 'mensal' %}active{% endif %}">Relatório diário</a>
+        <a href="{{ url_for('relatorios', aba='mensal', ref_mes=ref_mes) }}" class="tab-btn {% if aba == 'mensal' %}active{% endif %}">Controle mensal</a>
+      </div>
+
+      {% if aba != 'mensal' %}
+      <div id="tab-diario" class="tab-panel active">
+        <form method="get" action="{{ url_for('relatorios') }}" class="report-filter-form">
+          <input type="hidden" name="aba" value="diario">
+          <div class="field">
+            <label for="data">Data do relatório</label>
+            <input type="date" id="data" name="data" value="{{ data_ref }}" required>
+          </div>
+          <button type="submit" class="btn btn-primary">Consultar</button>
+        </form>
+
+        <div class="report-summary-row">
+          <div class="report-stat">
+            <span class="report-stat-value">{{ diario.total }}</span>
+            <span class="report-stat-label">Atualizações em {{ data_ref | formatar_data_curta }}</span>
+          </div>
+          {% if diario.por_acao %}
+          <div class="report-tags">
+            {% for acao, qtd in diario.por_acao.items() %}
+            <span class="badge report-acao-{{ acao }}">{{ acao | acao_label }}: {{ qtd }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+
+        {% if diario.registros %}
+        <div class="report-timeline">
+          {% for reg in diario.registros %}
+          <article class="report-entry">
+            <div class="report-entry-time">
+              <span class="report-hour">{{ reg.criado_em | formatar_hora }}</span>
+              <span class="badge report-acao-{{ reg.acao }}">{{ reg.acao | acao_label }}</span>
+            </div>
+            <div class="report-entry-body">
+              <div class="report-entry-head">
+                {% if reg.codigo != '—' %}
+                <span class="asset-code-lg">{{ reg.codigo }}</span>
+                <strong>{{ reg.nome }}</strong>
+                {% else %}
+                <strong>{{ reg.nome }}</strong>
+                {% endif %}
+              </div>
+              <p class="report-detalhes">{{ reg.detalhes }}</p>
+              <p class="report-meta">Por <strong>{{ reg.usuario_nome }}</strong> ({{ reg.usuario }})</p>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <h4>Nenhuma atualização nesta data</h4>
+          <p>Alterações feitas por fiscais aparecerão aqui automaticamente.</p>
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      <div id="tab-mensal" class="tab-panel active">
+        <form method="get" action="{{ url_for('relatorios') }}" class="report-filter-form">
+          <input type="hidden" name="aba" value="mensal">
+          <div class="field">
+            <label for="ref_mes">Mês de referência</label>
+            <input type="month" id="ref_mes" name="ref_mes" value="{{ ref_mes }}" required>
+          </div>
+          <button type="submit" class="btn btn-primary">Consultar</button>
+        </form>
+
+        <div class="dash-summary report-month-banner">
+          <div class="dash-summary-main">
+            <div class="dash-summary-text">
+              <span class="dash-summary-label">Controle mensal — {{ mes | nome_mes }}/{{ ano }}</span>
+              <div class="dash-summary-numbers">
+                <span class="dash-big">{{ mensal.total }}</span>
+                <span class="dash-sub">registros no mês</span>
+              </div>
+              <p class="dash-summary-desc">
+                <strong>{{ mensal.dias_com_atividade }}</strong> dia(s) com atividade
+                · <strong>{{ mensal.ativos_movimentados }}</strong> ativo(s) movimentado(s)
+              </p>
+            </div>
+          </div>
+          <div class="dash-kpi-grid">
+            <div class="dash-kpi">
+              <span class="dash-kpi-value">{{ mensal.snapshot.total_ativos }}</span>
+              <span class="dash-kpi-label">Ativos hoje</span>
+            </div>
+            <div class="dash-kpi kpi-ok">
+              <span class="dash-kpi-value">{{ mensal.snapshot.operacionais }}</span>
+              <span class="dash-kpi-label">Operacionais</span>
+            </div>
+            <div class="dash-kpi kpi-warn">
+              <span class="dash-kpi-value">{{ mensal.snapshot.manutencao }}</span>
+              <span class="dash-kpi-label">Manutenção</span>
+            </div>
+          </div>
+        </div>
+
+        {% if mensal.por_acao %}
+        <div class="report-summary-row">
+          <div class="report-tags">
+            {% for acao, qtd in mensal.por_acao.items() %}
+            <span class="badge report-acao-{{ acao }}">{{ acao | acao_label }}: {{ qtd }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if mensal.por_dia %}
+        <div class="panel report-subpanel">
+          <div class="panel-header"><h3>Atividade por dia</h3></div>
+          <div class="report-day-bars">
+            {% for dia in mensal.por_dia %}
+            <a href="{{ url_for('relatorios', aba='diario', data=dia.dia) }}" class="report-day-bar">
+              <span class="report-day-label">{{ dia.dia | formatar_data_curta }}</span>
+              <span class="report-day-track"><span class="report-day-fill" style="width: {{ (dia.total / mensal.total * 100)|int if mensal.total else 0 }}%"></span></span>
+              <span class="report-day-count">{{ dia.total }}</span>
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if mensal.registros %}
+        <div class="panel report-subpanel">
+          <div class="panel-header"><h3>Histórico do mês ({{ mensal.total }})</h3></div>
+          <div class="report-timeline compact">
+            {% for reg in mensal.registros %}
+            <article class="report-entry">
+              <div class="report-entry-time">
+                <span class="report-hour">{{ reg.criado_em | formatar_data }}</span>
+                <span class="badge report-acao-{{ reg.acao }}">{{ reg.acao | acao_label }}</span>
+              </div>
+              <div class="report-entry-body">
+                <div class="report-entry-head">
+                  {% if reg.codigo != '—' %}
+                  <span class="asset-code-lg">{{ reg.codigo }}</span>
+                  {% endif %}
+                  <strong>{{ reg.nome }}</strong>
+                </div>
+                <p class="report-detalhes">{{ reg.detalhes }}</p>
+                <p class="report-meta">{{ reg.usuario_nome }}</p>
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <h4>Nenhuma movimentação neste mês</h4>
+          <p>Edições e importações serão registradas automaticamente.</p>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

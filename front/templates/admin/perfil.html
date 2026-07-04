@@ -1,35 +1,29 @@
-{% extends "base.html" %}
+{% extends "admin/base.html" %}
 
-{% block title %}Meu Perfil — ManuControl{% endblock %}
+{% block title %}Perfil Admin{% endblock %}
 
 {% block content %}
 <section class="page-header">
   <h2>Meu perfil</h2>
-  <p>Informações da sua conta e alteração de senha.</p>
+  <p>Conta administrativa — {{ admin.usuario }}</p>
 </section>
 
 <div class="perfil-grid">
   <div class="panel">
-    <div class="panel-header">
-      <h3>Informações da conta</h3>
-    </div>
+    <div class="panel-header"><h3>Conta administrador</h3></div>
     <div class="panel-body">
       <dl class="info-grid">
         <div class="info-item">
-          <dt>Filial</dt>
-          <dd>{{ user.base_codigo }} — {{ user.base_nome }}</dd>
-        </div>
-        <div class="info-item">
           <dt>Usuário</dt>
-          <dd>{{ user.usuario }}</dd>
+          <dd>{{ admin.usuario }}</dd>
         </div>
         <div class="info-item">
           <dt>Nome</dt>
-          <dd>{{ user.nome }}</dd>
+          <dd>{{ admin.nome }}</dd>
         </div>
         <div class="info-item">
-          <dt>Perfil de acesso</dt>
-          <dd><span class="badge nivel-{{ user.nivel }}">{{ user.nivel | capitalize }}</span></dd>
+          <dt>Perfil</dt>
+          <dd><span class="badge nivel-admin">Administrador</span></dd>
         </div>
       </dl>
     </div>
@@ -46,17 +40,17 @@
       <form method="post" class="perfil-form">
         <div class="field">
           <label for="senha_atual">Senha atual</label>
-          <input type="password" id="senha_atual" name="senha_atual" required autocomplete="current-password">
+          <input type="password" id="senha_atual" name="senha_atual" required>
         </div>
         <div class="field">
           <label for="nova_senha">Nova senha</label>
-          <input type="password" id="nova_senha" name="nova_senha" minlength="4" required autocomplete="new-password">
+          <input type="password" id="nova_senha" name="nova_senha" minlength="4" required>
         </div>
         <div class="field">
           <label for="confirmar_senha">Confirmar nova senha</label>
-          <input type="password" id="confirmar_senha" name="confirmar_senha" minlength="4" required autocomplete="new-password">
+          <input type="password" id="confirmar_senha" name="confirmar_senha" minlength="4" required>
         </div>
-        <button type="submit" class="btn btn-primary">Salvar nova senha</button>
+        <button type="submit" class="btn btn-admin">Salvar nova senha</button>
       </form>
     </div>
   </div>
