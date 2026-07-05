@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — ManuControl{% endblock %}
+
+{% block content %}
+<section class="page-header dash-header">
+  <div class="page-header-row">
+    <div>
+      <p class="dash-eyebrow">Filial {{ current_user.base_codigo }} · {{ current_user.base_nome }}</p>
+      <h2>Dashboard de ativos</h2>
+      <p>Acompanhe status, localização e ordens de serviço da sua filial.</p>
+    </div>
+    {% if is_fiscal %}
+    <div class="page-header-actions">
+      <a href="{{ url_for('edicao') }}" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Gerenciar ativos
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if total > 0 %}
+<div class="dash-summary">
+  <div class="dash-summary-main">
+    <div class="dash-summary-text">
+      <span class="dash-summary-label">Disponibilidade da frota</span>
+      <div class="dash-summary-numbers">
+        <span class="dash-big">{{ pct_operacional }}%</span>
+        <span class="dash-sub">operacionais</span>
+      </div>
+      <p class="dash-summary-desc">
+        <strong>{{ total_operacional }}</strong> de {{ total }} ativos prontos para uso
+        {% if total_manutencao %} · <strong class="text-warning">{{ total_manutencao }}</strong> em manutenção{% endif %}
+      </p>
+    </div>
+    <div class="dash-progress-wrap">
+      <div class="dash-progress-bar" role="progressbar" aria-valuenow="{{ pct_operacional }}" aria-valuemin="0" aria-valuemax="100">
+        <div class="dash-progress-fill ok" style="width: {{ pct_operacional }}%"></div>
+        <div class="dash-progress-fill warn" style="width: {{ pct_manutencao }}%"></div>
+      </div>
+      <div class="dash-progress-legend">
+        <span><i class="dot dot-ok"></i> Operacional ({{ total_operacional }})</span>
+        <span><i class="dot dot-warn"></i> Manutenção ({{ total_manutencao }})</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash-kpi-grid">
+    <div class="dash-kpi">
+      <span class="dash-kpi-value">{{ total }}</span>
+      <span class="dash-kpi-label">Total</span>
+    </div>
+    <div class="dash-kpi kpi-ok">
+      <span class="dash-kpi-value">{{ total_operacional }}</span>
+      <span class="dash-kpi-label">Operacionais</span>
+    </div>
+    <div class="dash-kpi kpi-warn">
+      <span class="dash-kpi-value">{{ total_manutencao }}</span>
+      <span class="dash-kpi-label">Manutenção</span>
+    </div>
+    <div class="dash-kpi kpi-base">
+      <span class="dash-kpi-value">{{ na_base|length }}</span>
+      <span class="dash-kpi-label">Na base</span>
+    </div>
+    <div class="dash-kpi kpi-servico">
+      <span class="dash-kpi-value">{{ em_servico|length }}</span>
+      <span class="dash-kpi-label">Em serviço</span>
+    </div>
+    <div class="dash-kpi kpi-desloc">
+      <span class="dash-kpi-value">{{ em_deslocamento|length }}</span>
+      <span class="dash-kpi-label">Deslocamento</span>
+    </div>
+    <div class="dash-kpi kpi-terc">
+      <span class="dash-kpi-value">{{ em_terceiros|length }}</span>
+      <span class="dash-kpi-label">Terceiros</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if em_manutencao %}
+<section class="dash-alert-section">
+  <div class="dash-alert-header">
+    <div class="dash-alert-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </div>
+    <div>
+      <h3>Atenção — {{ em_manutencao|length }} ativo(s) em manutenção</h3>
+      <p>Verifique OS e previsão de retorno</p>
+    </div>
+  </div>
+  <div class="dash-maint-grid">
+    {% for ativo in em_manutencao %}
+    <article class="dash-maint-card">
+      <div class="dash-maint-top">
+        <span class="asset-code-lg">{{ ativo.codigo }}</span>
+        <span class="badge {{ ativo.local }}">{{ ativo.local | local_label }}</span>
+      </div>
+      <h4>{{ ativo.nome }}</h4>
+      <dl class="dash-maint-meta">
+        <div>
+          <dt>Ordem de serviço</dt>
+          <dd>{{ ativo.ordem_servico or 'Não informada' }}</dd>
+        </div>
+        <div>
+          <dt>Atualizado</dt>
+          <dd>{{ ativo.atualizado_em | formatar_data }}</dd>
+        </div>
+      </dl>
+      {% if ativo.observacoes %}
+      <p class="dash-maint-obs">{{ ativo.observacoes }}</p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<div class="panel dash-panel">
+  <div class="panel-header dash-panel-header">
+    <div>
+      <h3>Inventário completo</h3>
+      <p><span id="dash-count">{{ total }}</span> ativo(s) · use filtros para localizar rapidamente</p>
+    </div>
+  </div>
+
+  {% if ativos %}
+  <div class="dash-toolbar">
+    <div class="search-box dash-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" id="busca-ativos" placeholder="Buscar código, nome ou OS...">
+    </div>
+    <div class="dash-filters" id="dash-filters">
+      <button type="button" class="filter-pill active" data-filter="todos">Todos</button>
+      <button type="button" class="filter-pill" data-filter="operacional">Operacionais</button>
+      <button type="button" class="filter-pill" data-filter="manutencao">Manutenção</button>
+      <button type="button" class="filter-pill" data-filter="base">Na base</button>
+      <button type="button" class="filter-pill" data-filter="servico">Em serviço</button>
+      <button type="button" class="filter-pill" data-filter="deslocamento">Deslocamento</button>
+      <button type="button" class="filter-pill" data-filter="terceiros">Terceiros</button>
+    </div>
+  </div>
+
+  <div class="dash-list" id="dash-list">
+    {% for ativo in ativos %}
+    <article class="dash-asset-row {% if ativo.em_manutencao %}is-manutencao{% else %}is-operacional{% endif %}"
+             data-search="{{ ativo.codigo|lower }} {{ ativo.nome|lower }} {{ (ativo.ordem_servico or '')|lower }}"
+             data-status="{{ 'manutencao' if ativo.em_manutencao else 'operacional' }}"
+             data-local="{{ ativo.local }}">
+      <div class="dash-asset-status-col">
+        <span class="status-indicator {% if ativo.em_manutencao %}warn{% else %}ok{% endif %}" title="{{ 'Em manutenção' if ativo.em_manutencao else 'Operacional' }}"></span>
+      </div>
+      <div class="dash-asset-main">
+        <div class="dash-asset-title-row">
+          <span class="asset-code-lg">{{ ativo.codigo }}</span>
+          <h4>{{ ativo.nome }}</h4>
+        </div>
+        <div class="dash-asset-tags">
+          {% if ativo.em_manutencao %}
+          <span class="badge status-manutencao">Manutenção</span>
+          {% else %}
+          <span class="badge status-ok">Operacional</span>
+          {% endif %}
+          <span class="badge {{ ativo.local }}">{{ ativo.local | local_label }}</span>
+          {% if ativo.ordem_servico %}
+          <span class="dash-os-tag">OS: {{ ativo.ordem_servico }}</span>
+          {% endif %}
+        </div>
+        {% if ativo.observacoes %}
+        <p class="dash-asset-obs">{{ ativo.observacoes }}</p>
+        {% endif %}
+      </div>
+      <div class="dash-asset-date">
+        <span class="dash-date-label">Atualizado</span>
+        <time>{{ ativo.atualizado_em | formatar_data }}</time>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+
+  <div class="dash-empty-filter hidden-row" id="dash-no-results">
+    <p>Nenhum ativo encontrado com os filtros atuais.</p>
+  </div>
+
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+    <h4>Nenhum ativo cadastrado</h4>
+    <p>Importe uma lista CSV ou cadastre manualmente para começar.</p>
+    {% if is_fiscal %}
+    <a href="{{ url_for('edicao') }}" class="btn btn-primary">Cadastrar ativos</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

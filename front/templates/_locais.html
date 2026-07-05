@@ -1,0 +1,9 @@
+{% macro select_locais(selecionado='base', id='', locais=none) %}
+<select name="local"{% if id %} id="{{ id }}"{% endif %}>
+  {% if locais %}
+  {% for valor, label in locais.items() %}
+  <option value="{{ valor }}" {% if selecionado == valor %}selected{% endif %}>{{ label }}</option>
+  {% endfor %}
+  {% endif %}
+</select>
+{% endmacro %}

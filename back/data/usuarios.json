@@ -1,0 +1,16 @@
+[
+  {
+    "usuario": "gerente",
+    "senha_hash": "scrypt:32768:8:1$ynzH14arhIb5QXCV$144ff9cb6d77a1d2f3752389b2f6b4e5727e2cd670f37bf7cf73a1147694a1ab686d499923c67aeaca5f488ec133e6e10ef9c4e549a3bf306496967666ba90b4",
+    "nome": "Gerente",
+    "nivel": "gerente",
+    "senha_alterada": false
+  },
+  {
+    "usuario": "fiscal",
+    "senha_hash": "scrypt:32768:8:1$jtm5xoKi64k2BYLY$c3106ff66729311bb80e2f8fa4108a0bfb0d7a6282452b2f9d7cd65661b3c7f5b22a55e92cd49751049676bbf25cbd2e089bdee7c68ef7b20ede0fcfa0f4592f",
+    "nome": "Fiscal",
+    "nivel": "fiscal",
+    "senha_alterada": false
+  }
+]

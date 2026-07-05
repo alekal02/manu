@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% from "_locais.html" import select_locais %}
+
+{% block title %}Gerenciar Ativos — ManuControl{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h2>Gerenciar ativos</h2>
+      <p>Importe listas, cadastre novos ativos ou atualize o status de manutenção.</p>
+    </div>
+    <div class="page-header-actions">
+      <span class="badge nivel-fiscal">{{ ativos|length }} ativo(s)</span>
+    </div>
+  </div>
+</section>
+
+{% if request.args.get('salvo') %}
+<div class="alert success">Alterações salvas com sucesso.</div>
+{% endif %}
+
+{% if request.args.get('erro') == 'preencha_nome_codigo' %}
+<div class="alert error">Preencha o nome e o código do ativo.</div>
+{% endif %}
+
+<div class="panel">
+  <div class="panel-body">
+    <div data-tabs>
+      <div class="tabs">
+        <button type="button" class="tab-btn active" data-tab="tab-importar">Importar CSV</button>
+        <button type="button" class="tab-btn" data-tab="tab-novo">Novo ativo</button>
+        <button type="button" class="tab-btn" data-tab="tab-editar">Editar ({{ ativos|length }})</button>
+      </div>
+
+      <div id="tab-importar" class="tab-panel active">
+        <p class="import-help">
+          Envie um arquivo CSV ou Excel (<code>.xlsx</code>) com as colunas <code>nome</code> e <code>codigo</code>.
+          Ativos existentes terão o nome atualizado; novos serão adicionados automaticamente.
+        </p>
+        <form method="post" action="{{ url_for('importar_ativos') }}" enctype="multipart/form-data" class="import-form">
+          <div class="field">
+            <label for="arquivo">Arquivo CSV ou Excel</label>
+            <input type="file" id="arquivo" name="arquivo" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+          </div>
+          <div class="field checkbox-field">
+            <label>
+              <input type="checkbox" name="substituir" value="sim">
+              Substituir todos os ativos da filial antes de importar
+            </label>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Importar lista
+          </button>
+        </form>
+        <div class="import-model-actions">
+          <a href="{{ url_for('download_modelo_importacao') }}" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Baixar modelo Excel
+          </a>
+        </div>
+        <details class="csv-example">
+          <summary>Ver exemplo de arquivo CSV</summary>
+          <pre>nome,codigo
+Compressor AR-001,AR-001
+Gerador GE-102,GE-102
+Bomba Hidráulica BH-045,BH-045</pre>
+        </details>
+      </div>
+
+      <div id="tab-novo" class="tab-panel">
+        <form method="post" action="{{ url_for('novo_ativo') }}">
+          <div class="form-grid">
+            <div class="field">
+              <label for="novo-nome">Nome do ativo</label>
+              <input type="text" id="novo-nome" name="nome" placeholder="Ex: Compressor AR-001" required>
+            </div>
+            <div class="field">
+              <label for="novo-codigo">Código</label>
+              <input type="text" id="novo-codigo" name="codigo" placeholder="Ex: AR-001" required>
+            </div>
+            <div class="field">
+              <label for="novo-os">Ordem de serviço</label>
+              <input type="text" id="novo-os" name="ordem_servico" placeholder="Ex: OS-2026-0042">
+            </div>
+      <div class="field">
+        <label for="novo-local">Localização / Situação</label>
+        {{ select_locais('base', 'novo-local', locais) }}
+      </div>
+            <div class="field">
+              <label for="novo-manutencao">Status</label>
+              <select id="novo-manutencao" name="em_manutencao">
+                <option value="nao">Operacional</option>
+                <option value="sim">Em manutenção</option>
+              </select>
+            </div>
+            <div class="field full">
+              <label for="novo-obs">Observações</label>
+              <textarea id="novo-obs" name="observacoes" rows="3" placeholder="Detalhes sobre o ativo ou manutenção..."></textarea>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Adicionar ativo</button>
+        </form>
+      </div>
+
+      <div id="tab-editar" class="tab-panel">
+        {% if ativos %}
+        <p class="import-help" style="margin-bottom: 1rem;">Clique em um ativo para expandir. Edite nome, código, status e localização ou exclua o registro.</p>
+        <div class="accordion-list">
+          {% for ativo in ativos %}
+          <div class="accordion-item{% if loop.first %} open{% endif %}">
+            <button type="button" class="accordion-trigger">
+              <div class="accordion-trigger-left">
+                <span class="accordion-status {% if ativo.em_manutencao %}manutencao{% else %}ok{% endif %}"></span>
+                <div>
+                  <div class="accordion-title">{{ ativo.nome }}</div>
+                  <div class="accordion-meta">
+                    <span class="asset-code">{{ ativo.codigo }}</span>
+                    · {{ 'Em manutenção' if ativo.em_manutencao else 'Operacional' }}
+                    · {{ ativo.local | local_label }}
+                    · {{ ativo.atualizado_em | formatar_data }}
+                  </div>
+                </div>
+              </div>
+              <svg class="accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="accordion-body">
+              <form method="post" action="{{ url_for('salvar_ativo_route', ativo_id=ativo.id) }}">
+                <div class="form-grid">
+                  <div class="field">
+                    <label>Nome do ativo</label>
+                    <input type="text" name="nome" value="{{ ativo.nome }}" required>
+                  </div>
+                  <div class="field">
+                    <label>Código</label>
+                    <input type="text" name="codigo" value="{{ ativo.codigo }}" required>
+                  </div>
+                  <div class="field">
+                    <label>Status</label>
+                    <select name="em_manutencao">
+                      <option value="nao" {% if not ativo.em_manutencao %}selected{% endif %}>Operacional</option>
+                      <option value="sim" {% if ativo.em_manutencao %}selected{% endif %}>Em manutenção</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Localização / Situação</label>
+                    {{ select_locais(ativo.local, locais=locais) }}
+                  </div>
+                  <div class="field">
+                    <label>Ordem de serviço</label>
+                    <input type="text" name="ordem_servico" value="{{ ativo.ordem_servico or '' }}" placeholder="Ex: OS-2026-0042">
+                  </div>
+                  <div class="field full">
+                    <label>Observações</label>
+                    <textarea name="observacoes" rows="3" placeholder="Detalhes da manutenção...">{{ ativo.observacoes }}</textarea>
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary btn-sm">Salvar alterações</button>
+                </div>
+              </form>
+              <form method="post" action="{{ url_for('excluir_ativo_route', ativo_id=ativo.id) }}" class="form-actions form-actions-danger"
+                    onsubmit="return confirm('Excluir o ativo {{ ativo.codigo }} — {{ ativo.nome }}? Esta ação não pode ser desfeita.');">
+                <button type="submit" class="btn btn-danger btn-sm">Excluir ativo</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+          <h4>Nenhum ativo para editar</h4>
+          <p>Importe um CSV ou cadastre um novo ativo nas abas ao lado.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
