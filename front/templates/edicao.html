@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from "_locais.html" import select_locais %}
 
 {% block title %}Gerenciar Ativos — ManuControl{% endblock %}
 
@@ -17,7 +16,7 @@
 </section>
 
 {% if request.args.get('salvo') %}
-<div class="alert success">Alterações salvas com sucesso.</div>
+<div class="alert success">Alterações salvas e registradas no histórico do administrador.</div>
 {% endif %}
 
 {% if request.args.get('erro') == 'preencha_nome_codigo' %}
@@ -36,18 +35,12 @@
       <div id="tab-importar" class="tab-panel active">
         <p class="import-help">
           Envie um arquivo CSV ou Excel (<code>.xlsx</code>) com as colunas <code>nome</code> e <code>codigo</code>.
-          Ativos existentes terão o nome atualizado; novos serão adicionados automaticamente.
+          Ativos existentes terão o nome atualizado; novos serão adicionados. A importação não apaga ativos já cadastrados.
         </p>
         <form method="post" action="{{ url_for('importar_ativos') }}" enctype="multipart/form-data" class="import-form">
           <div class="field">
             <label for="arquivo">Arquivo CSV ou Excel</label>
             <input type="file" id="arquivo" name="arquivo" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
-          </div>
-          <div class="field checkbox-field">
-            <label>
-              <input type="checkbox" name="substituir" value="sim">
-              Substituir todos os ativos da filial antes de importar
-            </label>
           </div>
           <button type="submit" class="btn btn-primary">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -82,11 +75,14 @@ Bomba Hidráulica BH-045,BH-045</pre>
             </div>
             <div class="field">
               <label for="novo-os">Ordem de serviço</label>
-              <input type="text" id="novo-os" name="ordem_servico" placeholder="Ex: OS-2026-0042">
+              <input type="text" id="novo-os" name="ordem_servico" placeholder="Obrigatória se em manutenção">
             </div>
       <div class="field">
-        <label for="novo-local">Localização / Situação</label>
-        {{ select_locais('base', 'novo-local', locais) }}
+        <label for="novo-local">Local da manutenção</label>
+        <select name="local" id="novo-local">
+          <option value="base" selected>Manutenção na base</option>
+          <option value="terceiros">Manutenção em terceiros</option>
+        </select>
       </div>
             <div class="field">
               <label for="novo-manutencao">Status</label>
@@ -106,7 +102,9 @@ Bomba Hidráulica BH-045,BH-045</pre>
 
       <div id="tab-editar" class="tab-panel">
         {% if ativos %}
-        <p class="import-help" style="margin-bottom: 1rem;">Clique em um ativo para expandir. Edite nome, código, status e localização ou exclua o registro.</p>
+        <p class="import-help" style="margin-bottom: 1rem;">
+          Clique em um ativo para expandir. Toda alteração fica salva no histórico da filial (visível só para o admin).
+        </p>
         <div class="accordion-list">
           {% for ativo in ativos %}
           <div class="accordion-item{% if loop.first %} open{% endif %}">
@@ -144,12 +142,18 @@ Bomba Hidráulica BH-045,BH-045</pre>
                     </select>
                   </div>
                   <div class="field">
-                    <label>Localização / Situação</label>
-                    {{ select_locais(ativo.local, locais=locais) }}
+                    <label>Local da manutenção</label>
+                    <select name="local">
+                      <option value="base" {% if ativo.local == 'base' %}selected{% endif %}>Manutenção na base</option>
+                      <option value="terceiros" {% if ativo.local == 'terceiros' %}selected{% endif %}>Manutenção em terceiros</option>
+                      {% if ativo.local not in ('base', 'terceiros') %}
+                      <option value="{{ ativo.local }}" selected>{{ ativo.local | local_label }}</option>
+                      {% endif %}
+                    </select>
                   </div>
                   <div class="field">
                     <label>Ordem de serviço</label>
-                    <input type="text" name="ordem_servico" value="{{ ativo.ordem_servico or '' }}" placeholder="Ex: OS-2026-0042">
+                    <input type="text" name="ordem_servico" value="{{ ativo.ordem_servico or '' }}" placeholder="Obrigatória se em manutenção">
                   </div>
                   <div class="field full">
                     <label>Observações</label>
@@ -159,10 +163,6 @@ Bomba Hidráulica BH-045,BH-045</pre>
                 <div class="form-actions">
                   <button type="submit" class="btn btn-primary btn-sm">Salvar alterações</button>
                 </div>
-              </form>
-              <form method="post" action="{{ url_for('excluir_ativo_route', ativo_id=ativo.id) }}" class="form-actions form-actions-danger"
-                    onsubmit="return confirm('Excluir o ativo {{ ativo.codigo }} — {{ ativo.nome }}? Esta ação não pode ser desfeita.');">
-                <button type="submit" class="btn btn-danger btn-sm">Excluir ativo</button>
               </form>
             </div>
           </div>

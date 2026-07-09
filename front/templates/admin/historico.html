@@ -1,0 +1,280 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Histórico — Admin{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h2>Histórico por filial</h2>
+      <p>Consulte tudo que o fiscal informou. Somente o administrador pode alterar ou excluir registros.</p>
+    </div>
+    {% if base %}
+    <div class="page-header-actions">
+      <a href="{{ url_for('admin_historico_pdf', base_id=base_id, aba=aba, data=data_ref, ref_mes=ref_mes) }}" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Baixar PDF
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<div class="panel">
+  <div class="panel-body">
+    <form method="get" action="{{ url_for('admin_historico') }}" class="report-filter-form admin-hist-filter">
+      <input type="hidden" name="aba" value="{{ aba }}">
+      <div class="field">
+        <label for="base_id">Filial</label>
+        <select id="base_id" name="base_id" required onchange="this.form.submit()">
+          {% for b in bases %}
+          <option value="{{ b.id }}" {% if base_id == b.id %}selected{% endif %}>
+            {{ b.codigo }} — {{ b.nome }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if aba != 'mensal' %}
+      <div class="field">
+        <label for="data">Data</label>
+        <input type="date" id="data" name="data" value="{{ data_ref }}" required>
+      </div>
+      {% else %}
+      <div class="field">
+        <label for="ref_mes">Mês</label>
+        <input type="month" id="ref_mes" name="ref_mes" value="{{ ref_mes }}" required>
+      </div>
+      {% endif %}
+      <button type="submit" class="btn btn-admin">Consultar</button>
+    </form>
+
+    {% if base %}
+    <div class="tabs" style="margin-top: 1rem;">
+      <a href="{{ url_for('admin_historico', base_id=base_id, aba='diario', data=data_ref) }}" class="tab-btn {% if aba != 'mensal' %}active{% endif %}">Diário</a>
+      <a href="{{ url_for('admin_historico', base_id=base_id, aba='mensal', ref_mes=ref_mes) }}" class="tab-btn {% if aba == 'mensal' %}active{% endif %}">Mensal</a>
+    </div>
+
+    {% if aba != 'mensal' %}
+    <div class="report-summary-row">
+      <div class="report-stat">
+        <span class="report-stat-value">{{ diario.total }}</span>
+        <span class="report-stat-label">
+          Filial {{ base.codigo }} · {{ data_ref | formatar_data_curta }}
+        </span>
+      </div>
+      {% if diario.por_acao %}
+      <div class="report-tags">
+        {% for acao, qtd in diario.por_acao.items() %}
+        <span class="badge report-acao-{{ acao }}">{{ acao | acao_label }}: {{ qtd }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    {% if diario.registros %}
+    <div class="admin-hist-list">
+      {% for reg in diario.registros %}
+      <article class="admin-hist-card">
+        <div class="admin-hist-head">
+          <div>
+            <span class="report-hour">{{ reg.criado_em | formatar_hora }}</span>
+            <span class="badge report-acao-{{ reg.acao }}">{{ reg.acao | acao_label }}</span>
+            {% if reg.codigo and reg.codigo != '—' %}
+            <span class="asset-code-lg">{{ reg.codigo }}</span>
+            {% endif %}
+            <strong>{{ reg.nome }}</strong>
+          </div>
+          <p class="report-meta">Por {{ reg.usuario_nome }} ({{ reg.usuario }})</p>
+        </div>
+        <p class="report-detalhes">{{ reg.detalhes }}</p>
+
+        <details class="admin-hist-edit">
+          <summary>Alterar registro</summary>
+          <form method="post" action="{{ url_for('admin_editar_historico', historico_id=reg.id) }}" class="form-grid checkin-grid">
+            <input type="hidden" name="base_id" value="{{ base_id }}">
+            <input type="hidden" name="aba" value="diario">
+            <input type="hidden" name="data" value="{{ data_ref }}">
+            <div class="field">
+              <label>Código</label>
+              <input type="text" name="codigo" value="{{ reg.codigo }}">
+            </div>
+            <div class="field">
+              <label>Nome</label>
+              <input type="text" name="nome" value="{{ reg.nome }}" required>
+            </div>
+            <div class="field">
+              <label>Ação</label>
+              <select name="acao">
+                {% for valor, label in acoes.items() %}
+                <option value="{{ valor }}" {% if reg.acao == valor %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label>Status</label>
+              <select name="em_manutencao">
+                <option value="nao" {% if not reg.em_manutencao %}selected{% endif %}>Operacional</option>
+                <option value="sim" {% if reg.em_manutencao %}selected{% endif %}>Em manutenção</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Local</label>
+              <select name="local">
+                {% for valor, label in locais.items() %}
+                <option value="{{ valor }}" {% if reg.local == valor %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label>OS</label>
+              <input type="text" name="ordem_servico" value="{{ reg.ordem_servico or '' }}">
+            </div>
+            <div class="field full">
+              <label>Detalhes</label>
+              <textarea name="detalhes" rows="2">{{ reg.detalhes }}</textarea>
+            </div>
+            <div class="form-actions full">
+              <button type="submit" class="btn btn-admin btn-sm">Salvar alteração</button>
+            </div>
+          </form>
+          <form method="post" action="{{ url_for('admin_excluir_historico', historico_id=reg.id) }}"
+                class="form-actions form-actions-danger"
+                onsubmit="return confirm('Excluir este registro do histórico?');">
+            <input type="hidden" name="base_id" value="{{ base_id }}">
+            <input type="hidden" name="aba" value="diario">
+            <input type="hidden" name="data" value="{{ data_ref }}">
+            <button type="submit" class="btn btn-danger btn-sm">Excluir registro</button>
+          </form>
+        </details>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h4>Nenhum registro nesta data</h4>
+      <p>Check-ins do fiscal desta filial aparecerão aqui.</p>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="report-summary-row">
+      <div class="report-stat">
+        <span class="report-stat-value">{{ mensal.total }}</span>
+        <span class="report-stat-label">
+          Filial {{ base.codigo }} · {{ mes | nome_mes }}/{{ ano }}
+        </span>
+      </div>
+      {% if mensal.por_acao %}
+      <div class="report-tags">
+        {% for acao, qtd in mensal.por_acao.items() %}
+        <span class="badge report-acao-{{ acao }}">{{ acao | acao_label }}: {{ qtd }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    {% if mensal.por_dia %}
+    <div class="report-day-bars" style="margin-bottom: 1rem;">
+      {% for dia in mensal.por_dia %}
+      <a href="{{ url_for('admin_historico', base_id=base_id, aba='diario', data=dia.dia) }}" class="report-day-bar">
+        <span class="report-day-label">{{ dia.dia | formatar_data_curta }}</span>
+        <span class="report-day-track"><span class="report-day-fill" style="width: {{ (dia.total / mensal.total * 100)|int if mensal.total else 0 }}%"></span></span>
+        <span class="report-day-count">{{ dia.total }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if mensal.registros %}
+    <div class="admin-hist-list">
+      {% for reg in mensal.registros %}
+      <article class="admin-hist-card">
+        <div class="admin-hist-head">
+          <div>
+            <span class="report-hour">{{ reg.criado_em | formatar_data }}</span>
+            <span class="badge report-acao-{{ reg.acao }}">{{ reg.acao | acao_label }}</span>
+            {% if reg.codigo and reg.codigo != '—' %}
+            <span class="asset-code-lg">{{ reg.codigo }}</span>
+            {% endif %}
+            <strong>{{ reg.nome }}</strong>
+          </div>
+          <p class="report-meta">{{ reg.usuario_nome }}</p>
+        </div>
+        <p class="report-detalhes">{{ reg.detalhes }}</p>
+
+        <details class="admin-hist-edit">
+          <summary>Alterar registro</summary>
+          <form method="post" action="{{ url_for('admin_editar_historico', historico_id=reg.id) }}" class="form-grid checkin-grid">
+            <input type="hidden" name="base_id" value="{{ base_id }}">
+            <input type="hidden" name="aba" value="mensal">
+            <input type="hidden" name="ref_mes" value="{{ ref_mes }}">
+            <div class="field">
+              <label>Código</label>
+              <input type="text" name="codigo" value="{{ reg.codigo }}">
+            </div>
+            <div class="field">
+              <label>Nome</label>
+              <input type="text" name="nome" value="{{ reg.nome }}" required>
+            </div>
+            <div class="field">
+              <label>Ação</label>
+              <select name="acao">
+                {% for valor, label in acoes.items() %}
+                <option value="{{ valor }}" {% if reg.acao == valor %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label>Status</label>
+              <select name="em_manutencao">
+                <option value="nao" {% if not reg.em_manutencao %}selected{% endif %}>Operacional</option>
+                <option value="sim" {% if reg.em_manutencao %}selected{% endif %}>Em manutenção</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Local</label>
+              <select name="local">
+                {% for valor, label in locais.items() %}
+                <option value="{{ valor }}" {% if reg.local == valor %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label>OS</label>
+              <input type="text" name="ordem_servico" value="{{ reg.ordem_servico or '' }}">
+            </div>
+            <div class="field full">
+              <label>Detalhes</label>
+              <textarea name="detalhes" rows="2">{{ reg.detalhes }}</textarea>
+            </div>
+            <div class="form-actions full">
+              <button type="submit" class="btn btn-admin btn-sm">Salvar alteração</button>
+            </div>
+          </form>
+          <form method="post" action="{{ url_for('admin_excluir_historico', historico_id=reg.id) }}"
+                class="form-actions form-actions-danger"
+                onsubmit="return confirm('Excluir este registro do histórico?');">
+            <input type="hidden" name="base_id" value="{{ base_id }}">
+            <input type="hidden" name="aba" value="mensal">
+            <input type="hidden" name="ref_mes" value="{{ ref_mes }}">
+            <button type="submit" class="btn btn-danger btn-sm">Excluir registro</button>
+          </form>
+        </details>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h4>Nenhuma movimentação neste mês</h4>
+      <p>Selecione outro mês ou outra filial.</p>
+    </div>
+    {% endif %}
+    {% endif %}
+    {% else %}
+    <div class="empty-state">
+      <h4>Nenhuma filial disponível</h4>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

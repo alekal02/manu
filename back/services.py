@@ -19,7 +19,13 @@ LOCAIS = {
     "terceiros": "Em terceiros",
 }
 
+LOCAIS_MANUTENCAO = {
+    "base": "Manutenção na base",
+    "terceiros": "Manutenção em terceiros",
+}
+
 LOCAIS_VALIDOS = tuple(LOCAIS.keys())
+LOCAIS_MANUTENCAO_VALIDOS = tuple(LOCAIS_MANUTENCAO.keys())
 
 
 def _row_to_dict(row):
@@ -276,13 +282,23 @@ def salvar_ativo(base_id, ativo_id, dados, usuario=None, usuario_nome=None):
     if not nome or not codigo:
         raise ValueError("Nome e código são obrigatórios.")
 
+    em_manutencao = bool(dados["em_manutencao"])
+    ordem_servico = (dados.get("ordem_servico") or "").strip()
+    local = normalizar_local(dados.get("local", "base"))
+
+    if em_manutencao:
+        if not ordem_servico:
+            raise ValueError("Informe a ordem de serviço (OS) quando o ativo estiver em manutenção.")
+        if local not in LOCAIS_MANUTENCAO_VALIDOS:
+            raise ValueError("Informe onde está a manutenção: na base ou em terceiros.")
+
     novo = {
         "nome": nome,
         "codigo": codigo,
-        "em_manutencao": bool(dados["em_manutencao"]),
-        "local": normalizar_local(dados.get("local", "base")),
-        "ordem_servico": dados["ordem_servico"],
-        "observacoes": dados["observacoes"],
+        "em_manutencao": em_manutencao,
+        "local": local,
+        "ordem_servico": ordem_servico,
+        "observacoes": (dados.get("observacoes") or "").strip(),
     }
     agora = datetime.now().isoformat(timespec="seconds")
 
@@ -307,23 +323,45 @@ def salvar_ativo(base_id, ativo_id, dados, usuario=None, usuario_nome=None):
                     int(base_id),
                 ),
             )
+
+            # Histórico na mesma transação — toda edição do fiscal fica registrada
+            detalhes = _detalhes_edicao(antigo, novo)
+            if not detalhes or detalhes == "Registro atualizado":
+                detalhes = (
+                    f"Edição salva · {_fmt_status(em_manutencao)} · {_fmt_local(local)}"
+                    + (f" · OS {ordem_servico}" if ordem_servico else "")
+                )
+            else:
+                detalhes = f"Edição · {detalhes}"
+
+            usr = (usuario or "").strip() or "fiscal"
+            usr_nome = (usuario_nome or "").strip() or usr
+            conn.execute(
+                """
+                INSERT INTO historico_ativos
+                    (base_id, ativo_id, codigo, nome, acao, usuario, usuario_nome,
+                     detalhes, em_manutencao, local, ordem_servico, criado_em)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(base_id),
+                    int(ativo_id),
+                    novo["codigo"],
+                    novo["nome"],
+                    "edicao",
+                    usr,
+                    usr_nome,
+                    detalhes,
+                    int(novo["em_manutencao"]),
+                    novo["local"],
+                    novo["ordem_servico"],
+                    agora,
+                ),
+            )
     except sqlite3.IntegrityError as exc:
         raise ValueError("Já existe um ativo com este código nesta filial.") from exc
 
-    if usuario:
-        registrar_historico(
-            base_id,
-            ativo_id,
-            novo["codigo"],
-            novo["nome"],
-            "edicao",
-            usuario,
-            usuario_nome,
-            _detalhes_edicao(antigo, novo),
-            em_manutencao=novo["em_manutencao"],
-            local=novo["local"],
-            ordem_servico=novo["ordem_servico"],
-        )
+    return novo
 
 
 def excluir_ativo(base_id, ativo_id, usuario=None, usuario_nome=None):
@@ -357,6 +395,16 @@ def excluir_ativo(base_id, ativo_id, usuario=None, usuario_nome=None):
 
 def criar_ativo(base_id, dados, usuario=None, usuario_nome=None):
     agora = datetime.now().isoformat(timespec="seconds")
+    em_manutencao = bool(dados.get("em_manutencao", False))
+    ordem_servico = (dados.get("ordem_servico") or "").strip()
+    local = normalizar_local(dados.get("local", "base"))
+
+    if em_manutencao:
+        if not ordem_servico:
+            raise ValueError("Informe a ordem de serviço (OS) quando o ativo estiver em manutenção.")
+        if local not in LOCAIS_MANUTENCAO_VALIDOS:
+            raise ValueError("Informe onde está a manutenção: na base ou em terceiros.")
+
     try:
         with get_conn() as conn:
             cur = conn.execute(
@@ -370,10 +418,10 @@ def criar_ativo(base_id, dados, usuario=None, usuario_nome=None):
                     int(base_id),
                     dados["nome"],
                     dados["codigo"],
-                    normalizar_local(dados.get("local", "base")),
-                    int(dados.get("em_manutencao", False)),
-                    dados.get("ordem_servico", ""),
-                    dados.get("observacoes", ""),
+                    local,
+                    int(em_manutencao),
+                    ordem_servico,
+                    (dados.get("observacoes") or "").strip(),
                     agora,
                 ),
             )
@@ -390,10 +438,10 @@ def criar_ativo(base_id, dados, usuario=None, usuario_nome=None):
             "criacao",
             usuario,
             usuario_nome,
-            f"Ativo cadastrado · {_fmt_status(dados.get('em_manutencao', False))} · {_fmt_local(dados.get('local', 'base'))}",
-            em_manutencao=dados.get("em_manutencao", False),
-            local=dados.get("local", "base"),
-            ordem_servico=dados.get("ordem_servico", ""),
+            f"Ativo cadastrado · {_fmt_status(em_manutencao)} · {_fmt_local(local)}",
+            em_manutencao=em_manutencao,
+            local=local,
+            ordem_servico=ordem_servico,
         )
     return novo_id
 
@@ -687,6 +735,8 @@ def migrar_json_legacy(base_codigo="01"):
 def _historico_dict(row):
     d = dict(row)
     d["id"] = str(d["id"])
+    if "base_id" in d and d["base_id"] is not None:
+        d["base_id"] = str(d["base_id"])
     if d.get("ativo_id"):
         d["ativo_id"] = str(d["ativo_id"])
     if d.get("em_manutencao") is not None:
@@ -697,9 +747,86 @@ def _historico_dict(row):
 ACAO_LABEL = {
     "criacao": "Cadastro",
     "edicao": "Edição",
+    "verificacao": "Check-in diário",
     "importacao": "Importação CSV",
     "exclusao": "Exclusão",
 }
+
+
+def atualizar_status_diario(base_id, ativo_id, dados, usuario=None, usuario_nome=None):
+    """Check-in diário do fiscal: operacional ou manutenção (com OS + local)."""
+    antigo = obter_ativo(base_id, ativo_id)
+    if not antigo:
+        raise ValueError("Ativo não encontrado.")
+
+    em_manutencao = bool(dados.get("em_manutencao"))
+    observacoes = (dados.get("observacoes") or "").strip()
+
+    if em_manutencao:
+        ordem_servico = (dados.get("ordem_servico") or "").strip()
+        if not ordem_servico:
+            raise ValueError("Informe a ordem de serviço (OS) quando o ativo estiver em manutenção.")
+        local = (dados.get("local") or "").strip().lower()
+        if local not in LOCAIS_MANUTENCAO_VALIDOS:
+            raise ValueError("Informe onde está a manutenção: na base ou em terceiros.")
+    else:
+        ordem_servico = ""
+        local = "base"
+
+    novo = {
+        "nome": antigo["nome"],
+        "codigo": antigo["codigo"],
+        "em_manutencao": em_manutencao,
+        "local": local,
+        "ordem_servico": ordem_servico,
+        "observacoes": observacoes,
+    }
+    agora = datetime.now().isoformat(timespec="seconds")
+
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE ativos
+            SET em_manutencao = ?, local = ?, ordem_servico = ?,
+                observacoes = ?, atualizado_em = ?
+            WHERE id = ? AND base_id = ?
+            """,
+            (
+                int(novo["em_manutencao"]),
+                novo["local"],
+                novo["ordem_servico"],
+                novo["observacoes"],
+                agora,
+                int(ativo_id),
+                int(base_id),
+            ),
+        )
+
+    if usuario:
+        detalhes = _detalhes_edicao(antigo, novo)
+        if not detalhes or detalhes == "Registro atualizado":
+            if em_manutencao:
+                detalhes = (
+                    f"Check-in · Em manutenção · OS {ordem_servico} · {_fmt_local(local)}"
+                )
+            else:
+                detalhes = "Check-in · Operacional"
+
+        registrar_historico(
+            base_id,
+            ativo_id,
+            novo["codigo"],
+            novo["nome"],
+            "verificacao",
+            usuario,
+            usuario_nome,
+            detalhes,
+            em_manutencao=novo["em_manutencao"],
+            local=novo["local"],
+            ordem_servico=novo["ordem_servico"],
+        )
+
+    return novo
 
 
 def relatorio_diario(base_id, data_ref=None):
@@ -788,6 +915,77 @@ def relatorio_mensal(base_id, ano, mes):
             "manutencao": em_manutencao,
         },
     }
+
+
+def obter_historico(historico_id):
+    init_db()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM historico_ativos WHERE id = ?",
+            (int(historico_id),),
+        ).fetchone()
+    return _historico_dict(row) if row else None
+
+
+def atualizar_historico(historico_id, dados):
+    """Somente admin: corrige um registro do histórico."""
+    atual = obter_historico(historico_id)
+    if not atual:
+        raise ValueError("Registro de histórico não encontrado.")
+
+    codigo = (dados.get("codigo") or atual["codigo"] or "").strip() or "—"
+    nome = (dados.get("nome") or atual["nome"] or "").strip()
+    if not nome:
+        raise ValueError("Informe o nome do ativo no histórico.")
+
+    acao = (dados.get("acao") or atual["acao"] or "verificacao").strip()
+    if acao not in ACAO_LABEL:
+        raise ValueError("Ação de histórico inválida.")
+
+    detalhes = (dados.get("detalhes") or "").strip()
+    ordem_servico = (dados.get("ordem_servico") or "").strip()
+    local_raw = (dados.get("local") or "").strip().lower()
+    local = local_raw if local_raw in LOCAIS_VALIDOS else (atual.get("local") or "base")
+
+    em_manutencao = dados.get("em_manutencao")
+    if em_manutencao is None:
+        em_manutencao = atual.get("em_manutencao")
+    else:
+        em_manutencao = bool(em_manutencao)
+
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE historico_ativos
+            SET codigo = ?, nome = ?, acao = ?, detalhes = ?,
+                em_manutencao = ?, local = ?, ordem_servico = ?
+            WHERE id = ?
+            """,
+            (
+                codigo,
+                nome,
+                acao,
+                detalhes,
+                int(em_manutencao) if em_manutencao is not None else None,
+                local,
+                ordem_servico,
+                int(historico_id),
+            ),
+        )
+
+    return obter_historico(historico_id)
+
+
+def excluir_historico(historico_id):
+    """Somente admin: remove um registro do histórico."""
+    atual = obter_historico(historico_id)
+    if not atual:
+        raise ValueError("Registro de histórico não encontrado.")
+
+    with get_conn() as conn:
+        conn.execute("DELETE FROM historico_ativos WHERE id = ?", (int(historico_id),))
+
+    return atual
 
 
 # --- Admin ---

@@ -1,9 +1,11 @@
-// Tabs, accordion, search e menu mobile
+// Tabs, accordion, search, check-in e menu mobile
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initAccordion();
   initDashboard();
+  initCheckinForms();
   initMobileMenu();
+  scrollToFoco();
 });
 
 function initTabs() {
@@ -40,24 +42,27 @@ function initDashboard() {
   if (!list) return;
 
   let activeFilter = 'todos';
+  const rows = () => list.querySelectorAll('.dash-asset-row, .checkin-card');
 
   const applyFilters = () => {
     const term = (input?.value || '').toLowerCase().trim();
     let visible = 0;
 
-    list.querySelectorAll('.dash-asset-row').forEach(row => {
+    rows().forEach(row => {
       const text = row.dataset.search || '';
       const status = row.dataset.status;
       const local = row.dataset.local;
+      const pendente = row.dataset.pendente;
 
       const matchSearch = !term || text.includes(term);
       let matchFilter = true;
       if (activeFilter === 'operacional') matchFilter = status === 'operacional';
       else if (activeFilter === 'manutencao') matchFilter = status === 'manutencao';
-      else if (activeFilter === 'base') matchFilter = local === 'base';
+      else if (activeFilter === 'pendente') matchFilter = pendente === 'sim';
+      else if (activeFilter === 'base') matchFilter = status === 'manutencao' && local === 'base';
+      else if (activeFilter === 'terceiros') matchFilter = status === 'manutencao' && local === 'terceiros';
       else if (activeFilter === 'servico') matchFilter = local === 'servico';
       else if (activeFilter === 'deslocamento') matchFilter = local === 'deslocamento';
-      else if (activeFilter === 'terceiros') matchFilter = local === 'terceiros';
 
       const show = matchSearch && matchFilter;
       row.classList.toggle('hidden-row', !show);
@@ -81,6 +86,55 @@ function initDashboard() {
       applyFilters();
     });
   });
+}
+
+function syncManutFields(form) {
+  const manutencao = form.querySelector('input[name="em_manutencao"][value="sim"]')?.checked;
+  const fields = form.querySelector('[data-manut-fields]');
+  const osInput = form.querySelector('[data-os-input]');
+  const localSelect = form.querySelector('[data-local-select]');
+
+  if (fields) fields.classList.toggle('is-hidden', !manutencao);
+  if (osInput) {
+    osInput.required = !!manutencao;
+    if (!manutencao) osInput.value = '';
+  }
+  if (localSelect) {
+    localSelect.required = !!manutencao;
+    if (!manutencao) localSelect.value = '';
+  }
+}
+
+function initCheckinForms() {
+  document.querySelectorAll('[data-checkin-form]').forEach(form => {
+    form.querySelectorAll('[data-status-toggle]').forEach(input => {
+      input.addEventListener('change', () => syncManutFields(form));
+    });
+    syncManutFields(form);
+
+    form.addEventListener('submit', (e) => {
+      const manutencao = form.querySelector('input[name="em_manutencao"][value="sim"]')?.checked;
+      if (!manutencao) return;
+
+      const os = (form.querySelector('[data-os-input]')?.value || '').trim();
+      const local = (form.querySelector('[data-local-select]')?.value || '').trim();
+      if (!os || !local) {
+        e.preventDefault();
+        alert('Em manutenção, informe a OS e se está na base ou em terceiros.');
+      }
+    });
+  });
+}
+
+function scrollToFoco() {
+  const params = new URLSearchParams(window.location.search);
+  const foco = params.get('foco');
+  if (!foco) return;
+  const el = document.getElementById(`ativo-${foco}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('checkin-highlight');
+  setTimeout(() => el.classList.remove('checkin-highlight'), 1800);
 }
 
 function initMobileMenu() {

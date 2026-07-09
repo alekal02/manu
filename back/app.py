@@ -22,6 +22,7 @@ from pdf_reports import gerar_pdf_diario, gerar_pdf_mensal
 from services import (
     ACAO_LABEL,
     LOCAIS,
+    LOCAIS_MANUTENCAO,
     admin_alterar_senha_admin,
     admin_atualizar_base,
     admin_atualizar_usuario,
@@ -31,9 +32,11 @@ from services import (
     admin_toggle_usuario,
     autenticar,
     autenticar_admin,
+    atualizar_historico,
+    atualizar_status_diario,
     contar_bases,
     criar_ativo,
-    excluir_ativo,
+    excluir_historico,
     importar_ativos_csv,
     listar_ativos,
     listar_bases,
@@ -43,6 +46,7 @@ from services import (
     obter_admin,
     obter_base,
     obter_ativo,
+    obter_historico,
     obter_usuario,
     obter_usuario_por_id,
     relatorio_diario,
@@ -307,6 +311,11 @@ def verificacao():
     total_manutencao = len(em_manutencao)
     pct_operacional = round((len(operacionais) / total) * 100) if total else 0
     pct_manutencao = round((total_manutencao / total) * 100) if total else 0
+    hoje = datetime.now().date().isoformat()
+    pendentes_hoje = [
+        a for a in ativos
+        if not (a.get("atualizado_em") or "").startswith(hoje)
+    ]
     return render_template(
         "verificacao.html",
         ativos=ativos,
@@ -323,7 +332,38 @@ def verificacao():
         total_operacional=len(operacionais),
         pct_operacional=pct_operacional,
         pct_manutencao=pct_manutencao,
+        locais_manutencao=LOCAIS_MANUTENCAO,
+        pendentes_hoje=pendentes_hoje,
+        total_pendentes=len(pendentes_hoje),
+        hoje=hoje,
     )
+
+
+@app.route("/verificacao/salvar/<string:ativo_id>", methods=["POST"])
+@fiscal_required
+def salvar_verificacao(ativo_id):
+    ativo = obter_ativo(base_id_sessao(), ativo_id)
+    if not ativo:
+        flash("Ativo não encontrado.", "error")
+        return redirect(url_for("verificacao"))
+
+    try:
+        atualizar_status_diario(
+            base_id_sessao(),
+            ativo_id,
+            {
+                "em_manutencao": request.form.get("em_manutencao") == "sim",
+                "local": request.form.get("local", "").strip(),
+                "ordem_servico": request.form.get("ordem_servico", "").strip(),
+                "observacoes": request.form.get("observacoes", "").strip(),
+            },
+            *usuario_acao(),
+        )
+        flash(f"Status de {ativo['codigo']} atualizado.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("verificacao", foco=ativo_id))
 
 
 @app.route("/edicao")
@@ -360,24 +400,12 @@ def salvar_ativo_route(ativo_id):
             },
             *usuario_acao(),
         )
+        flash(f"Ativo {codigo} atualizado e registrado no histórico.", "success")
     except ValueError as exc:
         flash(str(exc), "error")
         return redirect(url_for("edicao"))
 
     return redirect(url_for("edicao", salvo=ativo_id))
-
-
-@app.route("/edicao/excluir/<string:ativo_id>", methods=["POST"])
-@fiscal_required
-def excluir_ativo_route(ativo_id):
-    ativo = obter_ativo(base_id_sessao(), ativo_id)
-    if not ativo:
-        flash("Ativo não encontrado.", "error")
-        return redirect(url_for("edicao"))
-
-    excluir_ativo(base_id_sessao(), ativo_id, *usuario_acao())
-    flash(f"Ativo {ativo['codigo']} excluído com sucesso.", "success")
-    return redirect(url_for("edicao"))
 
 
 @app.route("/edicao/novo", methods=["POST"])
@@ -419,7 +447,7 @@ def importar_ativos():
         flash("Selecione um arquivo CSV ou Excel.", "error")
         return redirect(url_for("edicao"))
 
-    substituir = request.form.get("substituir") == "sim"
+    substituir = False
     try:
         usr, usr_nome = usuario_acao()
         resultado = importar_ativos_csv(
@@ -456,72 +484,6 @@ def download_modelo_importacao():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name="modelo_importacao_ativos.xlsx",
-    )
-
-
-@app.route("/relatorios")
-@login_required
-def relatorios():
-    aba = request.args.get("aba", "diario")
-    data_ref = request.args.get("data", datetime.now().strftime("%Y-%m-%d"))
-
-    ref_mes = request.args.get("ref_mes", "")
-    if ref_mes and "-" in ref_mes:
-        partes = ref_mes.split("-")
-        ano, mes = int(partes[0]), int(partes[1])
-    else:
-        ano = int(request.args.get("ano", datetime.now().year))
-        mes = int(request.args.get("mes", datetime.now().month))
-
-    diario = relatorio_diario(base_id_sessao(), data_ref)
-    mensal = relatorio_mensal(base_id_sessao(), ano, mes)
-
-    return render_template(
-        "relatorios.html",
-        aba=aba,
-        data_ref=data_ref,
-        ref_mes=f"{ano:04d}-{mes:02d}",
-        ano=ano,
-        mes=mes,
-        diario=diario,
-        mensal=mensal,
-    )
-
-
-@app.route("/relatorios/pdf")
-@login_required
-def relatorio_pdf():
-    user = usuario_logado()
-    aba = request.args.get("aba", "diario")
-    base_id = base_id_sessao()
-    filial_codigo = user.get("base_codigo", "")
-    filial_nome = user.get("base_nome", "")
-
-    if aba == "mensal":
-        ref_mes = request.args.get("ref_mes", "")
-        if ref_mes and "-" in ref_mes:
-            partes = ref_mes.split("-")
-            ano, mes = int(partes[0]), int(partes[1])
-        else:
-            ano = int(request.args.get("ano", datetime.now().year))
-            mes = int(request.args.get("mes", datetime.now().month))
-
-        mensal = relatorio_mensal(base_id, ano, mes)
-        pdf_bytes = gerar_pdf_mensal(filial_codigo, filial_nome, mensal)
-        nome_arquivo = f"relatorio-mensal-{filial_codigo}-{ano:04d}-{mes:02d}.pdf"
-    else:
-        data_ref = request.args.get("data", datetime.now().strftime("%Y-%m-%d"))
-        diario = relatorio_diario(base_id, data_ref)
-        pdf_bytes = gerar_pdf_diario(filial_codigo, filial_nome, diario)
-        nome_arquivo = f"relatorio-diario-{filial_codigo}-{data_ref}.pdf"
-
-    buffer = BytesIO(pdf_bytes)
-    buffer.seek(0)
-    return send_file(
-        buffer,
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name=nome_arquivo,
     )
 
 
@@ -563,6 +525,158 @@ def admin_logout():
     session.clear()
     flash("Sessão administrativa encerrada.", "success")
     return redirect(url_for("admin_login"))
+
+
+@app.route("/admin/historico")
+@admin_required
+def admin_historico():
+    bases = listar_bases(ativas_apenas=False)
+    base_id = request.args.get("base_id", "").strip()
+    if not base_id and bases:
+        base_id = bases[0]["id"]
+
+    base = obter_base(base_id) if base_id else None
+    aba = request.args.get("aba", "diario")
+    data_ref = request.args.get("data", datetime.now().strftime("%Y-%m-%d"))
+
+    ref_mes = request.args.get("ref_mes", "")
+    if ref_mes and "-" in ref_mes:
+        partes = ref_mes.split("-")
+        ano, mes = int(partes[0]), int(partes[1])
+    else:
+        ano = int(request.args.get("ano", datetime.now().year))
+        mes = int(request.args.get("mes", datetime.now().month))
+
+    if base:
+        diario = relatorio_diario(base_id, data_ref)
+        mensal = relatorio_mensal(base_id, ano, mes)
+    else:
+        diario = {"registros": [], "total": 0, "por_acao": {}, "data": data_ref}
+        mensal = {
+            "registros": [],
+            "total": 0,
+            "por_acao": {},
+            "por_dia": [],
+            "dias_com_atividade": 0,
+            "ativos_movimentados": 0,
+            "ano": ano,
+            "mes": mes,
+            "snapshot": {"total_ativos": 0, "operacionais": 0, "manutencao": 0},
+        }
+
+    return render_template(
+        "admin/historico.html",
+        bases=bases,
+        base=base,
+        base_id=base_id,
+        aba=aba,
+        data_ref=data_ref,
+        ref_mes=f"{ano:04d}-{mes:02d}",
+        ano=ano,
+        mes=mes,
+        diario=diario,
+        mensal=mensal,
+        acoes=ACAO_LABEL,
+    )
+
+
+@app.route("/admin/historico/<string:historico_id>/editar", methods=["POST"])
+@admin_required
+def admin_editar_historico(historico_id):
+    reg = obter_historico(historico_id)
+    if not reg:
+        flash("Registro não encontrado.", "error")
+        return redirect(url_for("admin_historico"))
+
+    try:
+        atualizar_historico(
+            historico_id,
+            {
+                "codigo": request.form.get("codigo", "").strip(),
+                "nome": request.form.get("nome", "").strip(),
+                "acao": request.form.get("acao", "").strip(),
+                "detalhes": request.form.get("detalhes", "").strip(),
+                "ordem_servico": request.form.get("ordem_servico", "").strip(),
+                "local": request.form.get("local", "").strip(),
+                "em_manutencao": request.form.get("em_manutencao") == "sim",
+            },
+        )
+        flash("Registro de histórico atualizado.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+
+    return redirect(
+        url_for(
+            "admin_historico",
+            base_id=reg.get("base_id") or request.form.get("base_id"),
+            aba=request.form.get("aba", "diario"),
+            data=request.form.get("data"),
+            ref_mes=request.form.get("ref_mes"),
+        )
+    )
+
+
+@app.route("/admin/historico/<string:historico_id>/excluir", methods=["POST"])
+@admin_required
+def admin_excluir_historico(historico_id):
+    try:
+        reg = excluir_historico(historico_id)
+        flash("Registro de histórico removido.", "success")
+        base_id = reg.get("base_id")
+    except ValueError as exc:
+        flash(str(exc), "error")
+        base_id = request.form.get("base_id")
+
+    return redirect(
+        url_for(
+            "admin_historico",
+            base_id=base_id,
+            aba=request.form.get("aba", "diario"),
+            data=request.form.get("data"),
+            ref_mes=request.form.get("ref_mes"),
+        )
+    )
+
+
+@app.route("/admin/historico/pdf")
+@admin_required
+def admin_historico_pdf():
+    base_id = request.args.get("base_id", "").strip()
+    base = obter_base(base_id) if base_id else None
+    if not base:
+        flash("Selecione uma filial para gerar o PDF.", "error")
+        return redirect(url_for("admin_historico"))
+
+    aba = request.args.get("aba", "diario")
+    filial_codigo = base.get("codigo", "")
+    filial_nome = base.get("nome", "")
+
+    if aba == "mensal":
+        ref_mes = request.args.get("ref_mes", "")
+        if ref_mes and "-" in ref_mes:
+            partes = ref_mes.split("-")
+            ano, mes = int(partes[0]), int(partes[1])
+        else:
+            ano = int(request.args.get("ano", datetime.now().year))
+            mes = int(request.args.get("mes", datetime.now().month))
+
+        mensal = relatorio_mensal(base_id, ano, mes)
+        pdf_bytes = gerar_pdf_mensal(filial_codigo, filial_nome, mensal)
+        nome_arquivo = f"historico-mensal-{filial_codigo}-{ano:04d}-{mes:02d}.pdf"
+    else:
+        data_ref = request.args.get("data", datetime.now().strftime("%Y-%m-%d"))
+        diario = relatorio_diario(base_id, data_ref)
+        pdf_bytes = gerar_pdf_diario(filial_codigo, filial_nome, diario)
+        nome_arquivo = f"historico-diario-{filial_codigo}-{data_ref}.pdf"
+
+    buffer = BytesIO(pdf_bytes)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=nome_arquivo,
+    )
 
 
 @app.route("/admin")
