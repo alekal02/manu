@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Relatórios — ManuControl{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div class="page-header-row">
+    <div>
+      <p class="dash-eyebrow">Filial {{ current_user.base_codigo }} · {{ current_user.base_nome }}</p>
+      <h2>Relatórios de manutenção</h2>
+      <p>Ranking, tempo médio parado e exportação CSV/PDF.</p>
+    </div>
+    <div class="page-header-actions">
+      <a href="{{ url_for('relatorios_csv') }}" class="btn btn-secondary">Exportar CSV</a>
+      <a href="{{ url_for('relatorios_pdf') }}" class="btn btn-primary">Exportar PDF</a>
+    </div>
+  </div>
+</section>
+
+<div class="dash-kpi-grid" style="margin-bottom:1.25rem;">
+  <div class="dash-kpi">
+    <span class="dash-kpi-value">{{ rel.total_equipamentos }}</span>
+    <span class="dash-kpi-label">Equipamentos</span>
+  </div>
+  <div class="dash-kpi">
+    <span class="dash-kpi-value">{{ rel.total_ciclos }}</span>
+    <span class="dash-kpi-label">Ciclos de OS</span>
+  </div>
+  <div class="dash-kpi">
+    <span class="dash-kpi-value">{{ rel.tempo_medio_geral if rel.tempo_medio_geral is not none else '—' }}</span>
+    <span class="dash-kpi-label">Tempo médio (dias)</span>
+  </div>
+  <div class="dash-kpi kpi-warn">
+    <span class="dash-kpi-value">{{ rel.em_manutencao_agora }}</span>
+    <span class="dash-kpi-label">Em manutenção agora</span>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:1.25rem;">
+  <div class="panel-header">
+    <h3>Equipamentos com mais manutenções</h3>
+  </div>
+  <div class="panel-body">
+    {% set ranking = rel.ranking | selectattr('total_manutencoes', 'gt', 0) | list %}
+    {% if ranking %}
+    <div class="dash-list">
+      {% for item in ranking[:15] %}
+      <article class="dash-asset-row {% if item.em_manutencao %}is-manutencao{% else %}is-operacional{% endif %}">
+        <div class="dash-asset-status-col">
+          <span class="status-indicator {% if item.em_manutencao %}warn{% else %}ok{% endif %}"></span>
+        </div>
+        <div class="dash-asset-main">
+          <div class="dash-asset-title-row">
+            <span class="asset-code-lg">{{ item.codigo }}</span>
+            <h4><a href="{{ url_for('equipamento_detalhe_route', ativo_id=item.id) }}" style="color:inherit;text-decoration:none;">{{ item.nome }}</a></h4>
+          </div>
+          <div class="dash-asset-tags">
+            <span class="badge">{{ item.tipo_label }}</span>
+            <span class="badge">{{ item.total_manutencoes }} OS</span>
+            {% if item.tempo_medio_dias is not none %}
+            <span class="badge">Média {{ item.tempo_medio_dias }} dia(s)</span>
+            {% endif %}
+            {% if item.abertas %}<span class="badge status-manutencao">{{ item.abertas }} aberta(s)</span>{% endif %}
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h4>Sem ciclos ainda</h4>
+      <p>Quando o fiscal abrir manutenções, o ranking aparece aqui.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-header">
+    <h3>Ciclos recentes</h3>
+    <p>{{ rel.total_ciclos }} registro(s)</p>
+  </div>
+  <div class="panel-body">
+    {% if rel.ciclos %}
+    <div class="report-timeline">
+      {% for c in rel.ciclos[:40] %}
+      <article class="report-entry">
+        <div class="report-entry-head">
+          <span class="asset-code-lg">{{ c.ativo_codigo }}</span>
+          <strong>{{ c.ativo_nome }}</strong>
+          <span class="badge {% if c.aberta %}status-manutencao{% else %}status-ok{% endif %}">
+            {% if c.aberta %}Aberta{% else %}Encerrada{% endif %}
+          </span>
+          <span class="dash-os-tag">OS {{ c.os_numero }}</span>
+        </div>
+        <p class="report-detalhes">
+          {{ c.data_abertura | formatar_data_curta }}
+          {% if c.data_conclusao %} → {{ c.data_conclusao | formatar_data_curta }}{% endif %}
+          · {{ c.responsavel }}
+          {% if c.dias_parado is not none %} · {{ c.dias_parado }} dia(s) parado{% endif %}
+        </p>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h4>Nenhum ciclo de manutenção</h4>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

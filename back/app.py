@@ -18,11 +18,13 @@ from werkzeug.security import check_password_hash
 
 from config import SECRET_KEY
 from db import init_db
-from pdf_reports import gerar_pdf_diario, gerar_pdf_mensal
+from pdf_reports import gerar_pdf_diario, gerar_pdf_mensal, gerar_pdf_manutencoes
 from services import (
     ACAO_LABEL,
     LOCAIS,
     LOCAIS_MANUTENCAO,
+    TIPOS_EQUIPAMENTO,
+    abrir_manutencao,
     admin_alterar_senha_admin,
     admin_atualizar_base,
     admin_atualizar_usuario,
@@ -33,16 +35,21 @@ from services import (
     autenticar,
     autenticar_admin,
     atualizar_historico,
-    atualizar_status_diario,
     contar_bases,
     criar_ativo,
+    encerrar_manutencao,
+    equipamento_detalhe,
     excluir_historico,
+    export_csv_manutencoes,
     importar_ativos_csv,
     listar_ativos,
+    listar_ativos_com_stats,
     listar_bases,
     listar_bases_admin,
+    listar_manutencoes_base,
     listar_todos_usuarios,
     normalizar_local,
+    normalizar_tipo,
     obter_admin,
     obter_base,
     obter_ativo,
@@ -50,6 +57,7 @@ from services import (
     obter_usuario,
     obter_usuario_por_id,
     relatorio_diario,
+    relatorio_manutencoes,
     relatorio_mensal,
     salvar_ativo,
     seed_bases,
@@ -92,6 +100,11 @@ app.jinja_env.filters["formatar_data"] = formatar_data
 @app.template_filter("acao_label")
 def acao_label_filter(acao):
     return ACAO_LABEL.get(acao, acao.capitalize())
+
+
+@app.template_filter("tipo_label")
+def tipo_label_filter(tipo):
+    return TIPOS_EQUIPAMENTO.get(tipo, tipo or "—")
 
 
 @app.template_filter("local_label")
@@ -179,6 +192,20 @@ def fiscal_required(f):
     return decorated
 
 
+def gerente_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = usuario_logado()
+        if not user:
+            return redirect(url_for("login", next=request.url))
+        if user["nivel"] != "gerente":
+            flash("Relatórios são exclusivos do Gerente.", "error")
+            return redirect(url_for("verificacao"))
+        return f(*args, **kwargs)
+
+    return decorated
+
+
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -211,6 +238,8 @@ def inject_user():
         "is_gerente": user and user["nivel"] == "gerente",
         "is_admin": admin is not None,
         "locais": LOCAIS,
+        "tipos_equipamento": TIPOS_EQUIPAMENTO,
+        "locais_manutencao": LOCAIS_MANUTENCAO,
     }
 
 
@@ -298,78 +327,86 @@ def perfil():
 @app.route("/")
 @login_required
 def verificacao():
-    ativos = listar_ativos(base_id_sessao())
+    ativos = listar_ativos_com_stats(base_id_sessao())
     em_manutencao = [a for a in ativos if a.get("em_manutencao")]
     operacionais = [a for a in ativos if not a.get("em_manutencao")]
-    na_base = [a for a in ativos if a.get("local") == "base"]
-    em_servico = [a for a in ativos if a.get("local") == "servico"]
-    em_deslocamento = [a for a in ativos if a.get("local") == "deslocamento"]
-    em_terceiros = [a for a in ativos if a.get("local") == "terceiros"]
-    em_manutencao_na_base = [a for a in em_manutencao if a.get("local") == "base"]
-    em_manutencao_terceiros = [a for a in em_manutencao if a.get("local") == "terceiros"]
     total = len(ativos)
     total_manutencao = len(em_manutencao)
     pct_operacional = round((len(operacionais) / total) * 100) if total else 0
     pct_manutencao = round((total_manutencao / total) * 100) if total else 0
-    hoje = datetime.now().date().isoformat()
-    pendentes_hoje = [
-        a for a in ativos
-        if not (a.get("atualizado_em") or "").startswith(hoje)
-    ]
     return render_template(
         "verificacao.html",
         ativos=ativos,
         operacionais=operacionais,
         em_manutencao=em_manutencao,
-        na_base=na_base,
-        em_servico=em_servico,
-        em_deslocamento=em_deslocamento,
-        em_terceiros=em_terceiros,
-        em_manutencao_na_base=em_manutencao_na_base,
-        em_manutencao_terceiros=em_manutencao_terceiros,
         total=total,
         total_manutencao=total_manutencao,
         total_operacional=len(operacionais),
         pct_operacional=pct_operacional,
         pct_manutencao=pct_manutencao,
-        locais_manutencao=LOCAIS_MANUTENCAO,
-        pendentes_hoje=pendentes_hoje,
-        total_pendentes=len(pendentes_hoje),
-        hoje=hoje,
+        hoje=datetime.now().strftime("%Y-%m-%d"),
     )
 
 
-@app.route("/verificacao/salvar/<string:ativo_id>", methods=["POST"])
-@fiscal_required
-def salvar_verificacao(ativo_id):
-    ativo = obter_ativo(base_id_sessao(), ativo_id)
-    if not ativo:
-        flash("Ativo não encontrado.", "error")
+@app.route("/equipamentos/<string:ativo_id>")
+@login_required
+def equipamento_detalhe_route(ativo_id):
+    eq = equipamento_detalhe(base_id_sessao(), ativo_id)
+    if not eq:
+        flash("Equipamento não encontrado.", "error")
         return redirect(url_for("verificacao"))
+    return render_template("equipamento.html", eq=eq, hoje=datetime.now().strftime("%Y-%m-%d"))
 
+
+@app.route("/equipamentos/<string:ativo_id>/manutencao/abrir", methods=["POST"])
+@fiscal_required
+def abrir_manutencao_route(ativo_id):
     try:
-        atualizar_status_diario(
+        abrir_manutencao(
             base_id_sessao(),
             ativo_id,
             {
-                "em_manutencao": request.form.get("em_manutencao") == "sim",
-                "local": request.form.get("local", "").strip(),
-                "ordem_servico": request.form.get("ordem_servico", "").strip(),
-                "observacoes": request.form.get("observacoes", "").strip(),
+                "os_numero": request.form.get("os_numero", "").strip(),
+                "data_abertura": request.form.get("data_abertura", "").strip(),
+                "observacoes_abertura": request.form.get("observacoes_abertura", "").strip(),
+                "responsavel": request.form.get("responsavel", "").strip(),
+                "local": request.form.get("local", "base").strip(),
             },
             *usuario_acao(),
         )
-        flash(f"Status de {ativo['codigo']} atualizado.", "success")
+        flash("Manutenção aberta e registrada no histórico.", "success")
     except ValueError as exc:
         flash(str(exc), "error")
+    nxt = request.form.get("next") or url_for("verificacao", foco=ativo_id)
+    return redirect(nxt)
 
-    return redirect(url_for("verificacao", foco=ativo_id))
+
+@app.route("/equipamentos/<string:ativo_id>/manutencao/encerrar", methods=["POST"])
+@fiscal_required
+def encerrar_manutencao_route(ativo_id):
+    try:
+        encerrar_manutencao(
+            base_id_sessao(),
+            ativo_id,
+            {
+                "data_conclusao": request.form.get("data_conclusao", "").strip(),
+                "observacoes_encerramento": request.form.get(
+                    "observacoes_encerramento", ""
+                ).strip(),
+            },
+            *usuario_acao(),
+        )
+        flash("Manutenção encerrada. Equipamento voltou ao status Ativo.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    nxt = request.form.get("next") or url_for("verificacao", foco=ativo_id)
+    return redirect(nxt)
 
 
 @app.route("/edicao")
 @fiscal_required
 def edicao():
-    ativos = listar_ativos(base_id_sessao())
+    ativos = listar_ativos_com_stats(base_id_sessao())
     return render_template("edicao.html", ativos=ativos)
 
 
@@ -393,14 +430,15 @@ def salvar_ativo_route(ativo_id):
             {
                 "nome": nome,
                 "codigo": codigo,
-                "em_manutencao": request.form.get("em_manutencao") == "sim",
+                "tipo": normalizar_tipo(request.form.get("tipo", "outros")),
+                "patrimonio": request.form.get("patrimonio", "").strip(),
+                "data_aquisicao": request.form.get("data_aquisicao", "").strip(),
                 "local": normalizar_local(request.form.get("local", "base")),
-                "ordem_servico": request.form.get("ordem_servico", "").strip(),
                 "observacoes": request.form.get("observacoes", "").strip(),
             },
             *usuario_acao(),
         )
-        flash(f"Ativo {codigo} atualizado e registrado no histórico.", "success")
+        flash(f"Equipamento {codigo} atualizado e registrado no histórico.", "success")
     except ValueError as exc:
         flash(str(exc), "error")
         return redirect(url_for("edicao"))
@@ -424,14 +462,16 @@ def novo_ativo():
             {
                 "nome": nome_ativo,
                 "codigo": codigo,
+                "tipo": normalizar_tipo(request.form.get("tipo", "outros")),
+                "patrimonio": request.form.get("patrimonio", "").strip(),
+                "data_aquisicao": request.form.get("data_aquisicao", "").strip(),
                 "local": normalizar_local(request.form.get("local", "base")),
-                "em_manutencao": request.form.get("em_manutencao") == "sim",
-                "ordem_servico": request.form.get("ordem_servico", "").strip(),
                 "observacoes": request.form.get("observacoes", "").strip(),
             },
             usr,
             usr_nome,
         )
+        flash(f"Equipamento {codigo} cadastrado.", "success")
     except ValueError as exc:
         flash(str(exc), "error")
         return redirect(url_for("edicao"))
@@ -484,6 +524,49 @@ def download_modelo_importacao():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name="modelo_importacao_ativos.xlsx",
+    )
+
+
+@app.route("/relatorios")
+@gerente_required
+def relatorios_manutencao():
+    rel = relatorio_manutencoes(base_id_sessao())
+    return render_template("relatorios.html", rel=rel)
+
+
+@app.route("/relatorios/csv")
+@gerente_required
+def relatorios_csv():
+    user = usuario_logado()
+    conteudo = export_csv_manutencoes(base_id_sessao())
+    buffer = BytesIO(conteudo.encode("utf-8-sig"))
+    buffer.seek(0)
+    codigo = user.get("base_codigo", "filial")
+    return send_file(
+        buffer,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name=f"manutencoes-{codigo}.csv",
+    )
+
+
+@app.route("/relatorios/pdf")
+@gerente_required
+def relatorios_pdf():
+    user = usuario_logado()
+    rel = relatorio_manutencoes(base_id_sessao())
+    pdf_bytes = gerar_pdf_manutencoes(
+        user.get("base_codigo", ""),
+        user.get("base_nome", ""),
+        rel,
+    )
+    buffer = BytesIO(pdf_bytes)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"relatorio-manutencoes-{user.get('base_codigo', 'filial')}.pdf",
     )
 
 
@@ -550,6 +633,8 @@ def admin_historico():
     if base:
         diario = relatorio_diario(base_id, data_ref)
         mensal = relatorio_mensal(base_id, ano, mes)
+        manut = relatorio_manutencoes(base_id)
+        ciclos = listar_manutencoes_base(base_id)
     else:
         diario = {"registros": [], "total": 0, "por_acao": {}, "data": data_ref}
         mensal = {
@@ -563,6 +648,16 @@ def admin_historico():
             "mes": mes,
             "snapshot": {"total_ativos": 0, "operacionais": 0, "manutencao": 0},
         }
+        manut = {
+            "ranking": [],
+            "ciclos": [],
+            "total_ciclos": 0,
+            "tempo_medio_geral": None,
+            "equipamentos_com_manutencao": 0,
+            "em_manutencao_agora": 0,
+            "total_equipamentos": 0,
+        }
+        ciclos = []
 
     return render_template(
         "admin/historico.html",
@@ -576,6 +671,8 @@ def admin_historico():
         mes=mes,
         diario=diario,
         mensal=mensal,
+        manut=manut,
+        ciclos=ciclos,
         acoes=ACAO_LABEL,
     )
 

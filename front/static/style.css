@@ -3022,3 +3022,21 @@ textarea {
 .admin-hist-edit .form-grid {
   margin-bottom: 0.65rem;
 }
+
+.equip-action-panel {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(5, 150, 105, 0.12);
+}
+
+.equip-action-panel > summary {
+  margin-bottom: 0;
+}
+
+.equip-action-panel[open] > summary {
+  margin-bottom: 0.5rem;
+}
+
+.checkin-card.hidden-row {
+  display: none;
+}

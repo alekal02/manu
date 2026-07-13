@@ -38,6 +38,9 @@ def init_db():
                 base_id INTEGER NOT NULL,
                 nome TEXT NOT NULL,
                 codigo TEXT NOT NULL,
+                tipo TEXT NOT NULL DEFAULT '',
+                patrimonio TEXT NOT NULL DEFAULT '',
+                data_aquisicao TEXT,
                 local TEXT NOT NULL DEFAULT 'base',
                 em_manutencao INTEGER NOT NULL DEFAULT 0,
                 ordem_servico TEXT NOT NULL DEFAULT '',
@@ -49,6 +52,29 @@ def init_db():
 
             CREATE INDEX IF NOT EXISTS idx_ativos_base_manutencao
                 ON ativos (base_id, em_manutencao);
+
+            CREATE TABLE IF NOT EXISTS manutencoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                base_id INTEGER NOT NULL,
+                ativo_id INTEGER NOT NULL,
+                os_numero TEXT NOT NULL,
+                data_abertura TEXT NOT NULL,
+                observacoes_abertura TEXT NOT NULL DEFAULT '',
+                responsavel TEXT NOT NULL,
+                data_conclusao TEXT,
+                observacoes_encerramento TEXT NOT NULL DEFAULT '',
+                aberta INTEGER NOT NULL DEFAULT 1,
+                criado_em TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL,
+                FOREIGN KEY (base_id) REFERENCES bases (id),
+                FOREIGN KEY (ativo_id) REFERENCES ativos (id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_manutencoes_ativo
+                ON manutencoes (ativo_id, aberta);
+
+            CREATE INDEX IF NOT EXISTS idx_manutencoes_base
+                ON manutencoes (base_id, data_abertura);
 
             CREATE TABLE IF NOT EXISTS admins (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,8 +105,25 @@ def init_db():
                 ON historico_ativos (base_id, criado_em);
             """
         )
+        _migrar_colunas_ativos(conn)
     _seed_admin_if_needed()
     _initialized = True
+
+
+def _migrar_colunas_ativos(conn):
+    """Adiciona colunas novas em bancos já existentes."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(ativos)").fetchall()}
+    alteracoes = []
+    if "tipo" not in cols:
+        alteracoes.append("ALTER TABLE ativos ADD COLUMN tipo TEXT NOT NULL DEFAULT ''")
+    if "patrimonio" not in cols:
+        alteracoes.append(
+            "ALTER TABLE ativos ADD COLUMN patrimonio TEXT NOT NULL DEFAULT ''"
+        )
+    if "data_aquisicao" not in cols:
+        alteracoes.append("ALTER TABLE ativos ADD COLUMN data_aquisicao TEXT")
+    for sql in alteracoes:
+        conn.execute(sql)
 
 
 def _seed_admin_if_needed():

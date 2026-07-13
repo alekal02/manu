@@ -9,7 +9,7 @@
       <h2>Histórico por filial</h2>
       <p>Consulte tudo que o fiscal informou. Somente o administrador pode alterar ou excluir registros.</p>
     </div>
-    {% if base %}
+    {% if base and aba != 'manutencoes' %}
     <div class="page-header-actions">
       <a href="{{ url_for('admin_historico_pdf', base_id=base_id, aba=aba, data=data_ref, ref_mes=ref_mes) }}" class="btn btn-secondary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
@@ -34,15 +34,15 @@
           {% endfor %}
         </select>
       </div>
-      {% if aba != 'mensal' %}
-      <div class="field">
-        <label for="data">Data</label>
-        <input type="date" id="data" name="data" value="{{ data_ref }}" required>
-      </div>
-      {% else %}
+      {% if aba == 'mensal' %}
       <div class="field">
         <label for="ref_mes">Mês</label>
         <input type="month" id="ref_mes" name="ref_mes" value="{{ ref_mes }}" required>
+      </div>
+      {% elif aba != 'manutencoes' %}
+      <div class="field">
+        <label for="data">Data</label>
+        <input type="date" id="data" name="data" value="{{ data_ref }}" required>
       </div>
       {% endif %}
       <button type="submit" class="btn btn-admin">Consultar</button>
@@ -50,11 +50,81 @@
 
     {% if base %}
     <div class="tabs" style="margin-top: 1rem;">
-      <a href="{{ url_for('admin_historico', base_id=base_id, aba='diario', data=data_ref) }}" class="tab-btn {% if aba != 'mensal' %}active{% endif %}">Diário</a>
+      <a href="{{ url_for('admin_historico', base_id=base_id, aba='diario', data=data_ref) }}" class="tab-btn {% if aba not in ('mensal', 'manutencoes') %}active{% endif %}">Diário</a>
       <a href="{{ url_for('admin_historico', base_id=base_id, aba='mensal', ref_mes=ref_mes) }}" class="tab-btn {% if aba == 'mensal' %}active{% endif %}">Mensal</a>
+      <a href="{{ url_for('admin_historico', base_id=base_id, aba='manutencoes') }}" class="tab-btn {% if aba == 'manutencoes' %}active{% endif %}">Manutenções</a>
     </div>
 
-    {% if aba != 'mensal' %}
+    {% if aba == 'manutencoes' %}
+    <div class="report-summary-row">
+      <div class="report-stat">
+        <span class="report-stat-value">{{ manut.total_ciclos }}</span>
+        <span class="report-stat-label">Filial {{ base.codigo }} · ciclos de OS</span>
+      </div>
+      <div class="report-tags">
+        <span class="badge">Tempo médio: {{ manut.tempo_medio_geral if manut.tempo_medio_geral is not none else '—' }} dia(s)</span>
+        <span class="badge status-manutencao">Em manutenção agora: {{ manut.em_manutencao_agora }}</span>
+        <span class="badge">Equip. com OS: {{ manut.equipamentos_com_manutencao }}</span>
+      </div>
+    </div>
+
+    {% if manut.ranking %}
+    <h4 style="margin:1rem 0 0.5rem;">Ranking por equipamento</h4>
+    <div class="admin-hist-list" style="margin-bottom:1.25rem;">
+      {% for item in manut.ranking if item.total_manutencoes > 0 %}
+      <article class="admin-hist-card">
+        <div class="admin-hist-head">
+          <div>
+            <span class="asset-code-lg">{{ item.codigo }}</span>
+            <strong>{{ item.nome }}</strong>
+            <span class="badge">{{ item.tipo_label }}</span>
+            <span class="badge">{{ item.total_manutencoes }} OS</span>
+            {% if item.tempo_medio_dias is not none %}
+            <span class="badge">Média {{ item.tempo_medio_dias }} d</span>
+            {% endif %}
+            {% if item.em_manutencao %}<span class="badge status-manutencao">Em manutenção</span>{% endif %}
+          </div>
+        </div>
+      </article>
+      {% else %}
+      <p class="import-help">Nenhum ciclo registrado nesta filial.</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if ciclos %}
+    <h4 style="margin:1rem 0 0.5rem;">Ciclos de manutenção</h4>
+    <div class="admin-hist-list">
+      {% for c in ciclos %}
+      <article class="admin-hist-card">
+        <div class="admin-hist-head">
+          <div>
+            <span class="badge {% if c.aberta %}status-manutencao{% else %}status-ok{% endif %}">
+              {% if c.aberta %}Aberta{% else %}Encerrada{% endif %}
+            </span>
+            <span class="asset-code-lg">{{ c.ativo_codigo }}</span>
+            <strong>{{ c.ativo_nome }}</strong>
+            <span class="dash-os-tag">OS {{ c.os_numero }}</span>
+          </div>
+          <p class="report-meta">{{ c.responsavel }} · {{ c.data_abertura | formatar_data_curta }}{% if c.data_conclusao %} → {{ c.data_conclusao | formatar_data_curta }}{% endif %}</p>
+        </div>
+        {% if c.observacoes_abertura %}
+        <p class="report-detalhes"><strong>Abertura:</strong> {{ c.observacoes_abertura }}</p>
+        {% endif %}
+        {% if c.observacoes_encerramento %}
+        <p class="report-detalhes"><strong>Encerramento:</strong> {{ c.observacoes_encerramento }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h4>Nenhum ciclo de manutenção</h4>
+      <p>Aberturas e encerramentos de OS desta filial aparecerão aqui.</p>
+    </div>
+    {% endif %}
+
+    {% elif aba != 'mensal' %}
     <div class="report-summary-row">
       <div class="report-stat">
         <span class="report-stat-value">{{ diario.total }}</span>

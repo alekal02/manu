@@ -1,9 +1,8 @@
-// Tabs, accordion, search, check-in e menu mobile
+// Tabs, accordion, painel de equipamentos e menu mobile
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initAccordion();
   initDashboard();
-  initCheckinForms();
   initMobileMenu();
   scrollToFoco();
 });
@@ -51,18 +50,14 @@ function initDashboard() {
     rows().forEach(row => {
       const text = row.dataset.search || '';
       const status = row.dataset.status;
-      const local = row.dataset.local;
-      const pendente = row.dataset.pendente;
 
       const matchSearch = !term || text.includes(term);
       let matchFilter = true;
-      if (activeFilter === 'operacional') matchFilter = status === 'operacional';
-      else if (activeFilter === 'manutencao') matchFilter = status === 'manutencao';
-      else if (activeFilter === 'pendente') matchFilter = pendente === 'sim';
-      else if (activeFilter === 'base') matchFilter = status === 'manutencao' && local === 'base';
-      else if (activeFilter === 'terceiros') matchFilter = status === 'manutencao' && local === 'terceiros';
-      else if (activeFilter === 'servico') matchFilter = local === 'servico';
-      else if (activeFilter === 'deslocamento') matchFilter = local === 'deslocamento';
+      if (activeFilter === 'ativo' || activeFilter === 'operacional') {
+        matchFilter = status === 'ativo' || status === 'operacional';
+      } else if (activeFilter === 'manutencao') {
+        matchFilter = status === 'manutencao';
+      }
 
       const show = matchSearch && matchFilter;
       row.classList.toggle('hidden-row', !show);
@@ -84,44 +79,6 @@ function initDashboard() {
       btn.classList.add('active');
       activeFilter = btn.dataset.filter;
       applyFilters();
-    });
-  });
-}
-
-function syncManutFields(form) {
-  const manutencao = form.querySelector('input[name="em_manutencao"][value="sim"]')?.checked;
-  const fields = form.querySelector('[data-manut-fields]');
-  const osInput = form.querySelector('[data-os-input]');
-  const localSelect = form.querySelector('[data-local-select]');
-
-  if (fields) fields.classList.toggle('is-hidden', !manutencao);
-  if (osInput) {
-    osInput.required = !!manutencao;
-    if (!manutencao) osInput.value = '';
-  }
-  if (localSelect) {
-    localSelect.required = !!manutencao;
-    if (!manutencao) localSelect.value = '';
-  }
-}
-
-function initCheckinForms() {
-  document.querySelectorAll('[data-checkin-form]').forEach(form => {
-    form.querySelectorAll('[data-status-toggle]').forEach(input => {
-      input.addEventListener('change', () => syncManutFields(form));
-    });
-    syncManutFields(form);
-
-    form.addEventListener('submit', (e) => {
-      const manutencao = form.querySelector('input[name="em_manutencao"][value="sim"]')?.checked;
-      if (!manutencao) return;
-
-      const os = (form.querySelector('[data-os-input]')?.value || '').trim();
-      const local = (form.querySelector('[data-local-select]')?.value || '').trim();
-      if (!os || !local) {
-        e.preventDefault();
-        alert('Em manutenção, informe a OS e se está na base ou em terceiros.');
-      }
     });
   });
 }

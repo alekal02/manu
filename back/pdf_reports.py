@@ -247,3 +247,56 @@ def gerar_pdf_mensal(filial_codigo, filial_nome, mensal):
             )
 
     return bytes(pdf.output())
+
+
+def gerar_pdf_manutencoes(filial_codigo, filial_nome, rel):
+    pdf = RelatorioPDF()
+    pdf.add_page()
+    pdf.header_block(
+        "Relatório de manutenções",
+        f"Filial {filial_codigo} — {filial_nome}",
+    )
+    pdf.stat_line("Equipamentos", str(rel.get("total_equipamentos", 0)))
+    pdf.stat_line("Ciclos de manutenção", str(rel.get("total_ciclos", 0)))
+    pdf.stat_line(
+        "Tempo médio parado (dias)",
+        str(rel.get("tempo_medio_geral") if rel.get("tempo_medio_geral") is not None else "—"),
+    )
+    pdf.stat_line("Em manutenção agora", str(rel.get("em_manutencao_agora", 0)))
+
+    ranking = [r for r in (rel.get("ranking") or []) if r.get("total_manutencoes", 0) > 0]
+    if ranking:
+        pdf.section_title("Equipamentos com mais manutenções")
+        for item in ranking[:20]:
+            media = (
+                str(item["tempo_medio_dias"])
+                if item.get("tempo_medio_dias") is not None
+                else "—"
+            )
+            pdf._write_lines(
+                f"{item['codigo']} — {item['nome']} ({item.get('tipo_label', '—')}): "
+                f"{item['total_manutencoes']} OS · média {media} dia(s)",
+                h=5,
+                size=9,
+            )
+        pdf.ln(1)
+
+    ciclos = rel.get("ciclos") or []
+    if ciclos:
+        pdf.section_title(f"Ciclos ({len(ciclos)})")
+        for c in ciclos[:80]:
+            status = "Aberta" if c.get("aberta") else "Encerrada"
+            dias = c.get("dias_parado")
+            dias_txt = f" · {dias} dia(s)" if dias is not None else ""
+            pdf.entry_block(
+                _fmt_data_curta(c.get("data_abertura")),
+                status,
+                c.get("ativo_codigo"),
+                c.get("ativo_nome"),
+                f"OS {c.get('os_numero')} · {c.get('responsavel', '—')}{dias_txt}",
+                (c.get("observacoes_abertura") or "")[:160],
+            )
+    else:
+        pdf._write_lines("Nenhum ciclo de manutenção registrado.", h=6, size=10)
+
+    return bytes(pdf.output())

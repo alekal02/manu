@@ -1,28 +1,32 @@
 {% extends "base.html" %}
 
-{% block title %}{% if is_fiscal %}Check-in diário{% else %}Dashboard{% endif %} — ManuControl{% endblock %}
+{% block title %}Equipamentos — ManuControl{% endblock %}
 
 {% block content %}
 <section class="page-header dash-header">
   <div class="page-header-row">
     <div>
       <p class="dash-eyebrow">Filial {{ current_user.base_codigo }} · {{ current_user.base_nome }}</p>
-      {% if is_fiscal %}
-      <h2>Check-in diário</h2>
-      <p>Informe se cada ativo está em operação ou em manutenção. Em manutenção, preencha a OS e o local.</p>
-      {% else %}
-      <h2>Dashboard de ativos</h2>
-      <p>Acompanhe status, localização e ordens de serviço da sua filial.</p>
-      {% endif %}
+      <h2>Equipamentos de limpeza</h2>
+      <p>
+        {% if is_fiscal %}
+        Cadastre equipamentos e abra/encierre manutenções com OS.
+        {% else %}
+        Acompanhe status, OS e disponibilidade da frota.
+        {% endif %}
+      </p>
     </div>
-    {% if is_fiscal %}
     <div class="page-header-actions">
+      {% if is_fiscal %}
       <a href="{{ url_for('edicao') }}" class="btn btn-secondary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        Cadastrar / importar
+        Cadastrar
       </a>
+      {% endif %}
+      {% if is_gerente %}
+      <a href="{{ url_for('relatorios_manutencao') }}" class="btn btn-secondary">Relatórios</a>
+      {% endif %}
     </div>
-    {% endif %}
   </div>
 </section>
 
@@ -33,19 +37,12 @@
       <span class="dash-summary-label">Disponibilidade da frota</span>
       <div class="dash-summary-numbers">
         <span class="dash-big">{{ pct_operacional }}%</span>
-        <span class="dash-sub">operacionais</span>
+        <span class="dash-sub">ativos</span>
       </div>
       <p class="dash-summary-desc">
-        <strong>{{ total_operacional }}</strong> de {{ total }} ativos prontos para uso
+        <strong>{{ total_operacional }}</strong> de {{ total }} equipamentos prontos
         {% if total_manutencao %} · <strong class="text-warning">{{ total_manutencao }}</strong> em manutenção{% endif %}
       </p>
-      {% if is_fiscal and total_pendentes %}
-      <p class="dash-summary-desc checkin-pending-hint">
-        <strong>{{ total_pendentes }}</strong> ativo(s) ainda sem check-in hoje
-      </p>
-      {% elif is_fiscal %}
-      <p class="dash-summary-desc checkin-done-hint">Todos os ativos já tiveram check-in hoje.</p>
-      {% endif %}
     </div>
     <div class="dash-progress-wrap">
       <div class="dash-progress-bar" role="progressbar" aria-valuenow="{{ pct_operacional }}" aria-valuemin="0" aria-valuemax="100">
@@ -53,8 +50,8 @@
         <div class="dash-progress-fill warn" style="width: {{ pct_manutencao }}%"></div>
       </div>
       <div class="dash-progress-legend">
-        <span><i class="dot dot-ok"></i> Operacional ({{ total_operacional }})</span>
-        <span><i class="dot dot-warn"></i> Manutenção ({{ total_manutencao }})</span>
+        <span><i class="dot dot-ok"></i> Ativo ({{ total_operacional }})</span>
+        <span><i class="dot dot-warn"></i> Em manutenção ({{ total_manutencao }})</span>
       </div>
     </div>
   </div>
@@ -66,26 +63,12 @@
     </div>
     <div class="dash-kpi kpi-ok">
       <span class="dash-kpi-value">{{ total_operacional }}</span>
-      <span class="dash-kpi-label">Operacionais</span>
+      <span class="dash-kpi-label">Ativos</span>
     </div>
     <div class="dash-kpi kpi-warn">
       <span class="dash-kpi-value">{{ total_manutencao }}</span>
-      <span class="dash-kpi-label">Manutenção</span>
+      <span class="dash-kpi-label">Em manutenção</span>
     </div>
-    <div class="dash-kpi kpi-base">
-      <span class="dash-kpi-value">{{ em_manutencao_na_base|length }}</span>
-      <span class="dash-kpi-label">Manut. na base</span>
-    </div>
-    <div class="dash-kpi kpi-terc">
-      <span class="dash-kpi-value">{{ em_manutencao_terceiros|length }}</span>
-      <span class="dash-kpi-label">Manut. terceiros</span>
-    </div>
-    {% if is_fiscal %}
-    <div class="dash-kpi {% if total_pendentes %}kpi-warn{% else %}kpi-ok{% endif %}">
-      <span class="dash-kpi-value">{{ total_pendentes }}</span>
-      <span class="dash-kpi-label">Pendentes hoje</span>
-    </div>
-    {% endif %}
   </div>
 </div>
 {% endif %}
@@ -97,32 +80,29 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
     </div>
     <div>
-      <h3>Atenção — {{ em_manutencao|length }} ativo(s) em manutenção</h3>
-      <p>Verifique OS e local da manutenção</p>
+      <h3>Atenção — {{ em_manutencao|length }} equipamento(s) em manutenção</h3>
+      <p>Verifique OS e responsável</p>
     </div>
   </div>
   <div class="dash-maint-grid">
     {% for ativo in em_manutencao %}
-    <article class="dash-maint-card">
+    <a href="{{ url_for('equipamento_detalhe_route', ativo_id=ativo.id) }}" class="dash-maint-card" style="text-decoration:none;color:inherit;">
       <div class="dash-maint-top">
         <span class="asset-code-lg">{{ ativo.codigo }}</span>
-        <span class="badge {{ ativo.local }}">{{ ativo.local | local_label }}</span>
+        <span class="badge status-manutencao">Em manutenção</span>
       </div>
       <h4>{{ ativo.nome }}</h4>
       <dl class="dash-maint-meta">
         <div>
-          <dt>Ordem de serviço</dt>
-          <dd>{{ ativo.ordem_servico or 'Não informada' }}</dd>
+          <dt>Tipo</dt>
+          <dd>{{ ativo.tipo_label }}</dd>
         </div>
         <div>
-          <dt>Atualizado</dt>
-          <dd>{{ ativo.atualizado_em | formatar_data }}</dd>
+          <dt>OS atual</dt>
+          <dd>{{ ativo.ordem_servico or ativo.stats.ultima_os or '—' }}</dd>
         </div>
       </dl>
-      {% if ativo.observacoes %}
-      <p class="dash-maint-obs">{{ ativo.observacoes }}</p>
-      {% endif %}
-    </article>
+    </a>
     {% endfor %}
   </div>
 </section>
@@ -131,13 +111,8 @@
 <div class="panel dash-panel">
   <div class="panel-header dash-panel-header">
     <div>
-      {% if is_fiscal %}
-      <h3>Atualizar status dos ativos</h3>
-      <p><span id="dash-count">{{ total }}</span> ativo(s) · marque operacional ou manutenção</p>
-      {% else %}
-      <h3>Inventário completo</h3>
-      <p><span id="dash-count">{{ total }}</span> ativo(s) · use filtros para localizar rapidamente</p>
-      {% endif %}
+      <h3>Painel de equipamentos</h3>
+      <p><span id="dash-count">{{ total }}</span> equipamento(s)</p>
     </div>
   </div>
 
@@ -145,153 +120,121 @@
   <div class="dash-toolbar">
     <div class="search-box dash-search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="search" id="busca-ativos" placeholder="Buscar código, nome ou OS...">
+      <input type="search" id="busca-ativos" placeholder="Buscar nome, tipo, patrimônio, código ou OS...">
     </div>
     <div class="dash-filters" id="dash-filters">
       <button type="button" class="filter-pill active" data-filter="todos">Todos</button>
-      {% if is_fiscal %}
-      <button type="button" class="filter-pill" data-filter="pendente">Pendentes hoje</button>
-      {% endif %}
-      <button type="button" class="filter-pill" data-filter="operacional">Operacionais</button>
-      <button type="button" class="filter-pill" data-filter="manutencao">Manutenção</button>
-      <button type="button" class="filter-pill" data-filter="base">Manut. na base</button>
-      <button type="button" class="filter-pill" data-filter="terceiros">Manut. terceiros</button>
+      <button type="button" class="filter-pill" data-filter="ativo">Ativo</button>
+      <button type="button" class="filter-pill" data-filter="manutencao">Em manutenção</button>
     </div>
   </div>
 
-  {% if is_fiscal %}
   <div class="checkin-list" id="dash-list">
     {% for ativo in ativos %}
-    {% set atualizado_hoje = (ativo.atualizado_em or '').startswith(hoje) %}
-    <article class="checkin-card {% if ativo.em_manutencao %}is-manutencao{% else %}is-operacional{% endif %} {% if not atualizado_hoje %}is-pendente{% endif %}"
+    <article class="checkin-card {% if ativo.em_manutencao %}is-manutencao{% else %}is-operacional{% endif %}"
              id="ativo-{{ ativo.id }}"
-             data-search="{{ ativo.codigo|lower }} {{ ativo.nome|lower }} {{ (ativo.ordem_servico or '')|lower }}"
-             data-status="{{ 'manutencao' if ativo.em_manutencao else 'operacional' }}"
-             data-local="{{ ativo.local }}"
-             data-pendente="{{ 'sim' if not atualizado_hoje else 'nao' }}">
+             data-search="{{ ativo.codigo|lower }} {{ ativo.nome|lower }} {{ (ativo.tipo_label or '')|lower }} {{ (ativo.patrimonio or '')|lower }} {{ (ativo.ordem_servico or '')|lower }} {{ (ativo.stats.ultima_os or '')|lower }}"
+             data-status="{{ 'manutencao' if ativo.em_manutencao else 'ativo' }}">
       <div class="checkin-card-head">
         <div class="checkin-card-title">
           <span class="status-indicator {% if ativo.em_manutencao %}warn{% else %}ok{% endif %}"></span>
           <div>
             <div class="checkin-code-row">
-              <span class="asset-code-lg">{{ ativo.codigo }}</span>
-              {% if not atualizado_hoje %}
-              <span class="badge checkin-pendente">Pendente hoje</span>
-              {% else %}
-              <span class="badge checkin-ok">Atualizado hoje</span>
+              <a href="{{ url_for('equipamento_detalhe_route', ativo_id=ativo.id) }}" class="asset-code-lg">{{ ativo.codigo }}</a>
+              <span class="badge {% if ativo.em_manutencao %}status-manutencao{% else %}status-ok{% endif %}">
+                {{ ativo.status_label }}
+              </span>
+            </div>
+            <h4><a href="{{ url_for('equipamento_detalhe_route', ativo_id=ativo.id) }}" style="color:inherit;text-decoration:none;">{{ ativo.nome }}</a></h4>
+            <div class="dash-asset-tags" style="margin-top:0.35rem;">
+              <span class="badge">{{ ativo.tipo_label }}</span>
+              {% if ativo.patrimonio %}<span class="badge">Patrimônio {{ ativo.patrimonio }}</span>{% endif %}
+              {% if ativo.ordem_servico %}<span class="dash-os-tag">OS: {{ ativo.ordem_servico }}</span>{% endif %}
+              {% if ativo.stats.total_manutencoes %}
+              <span class="badge">{{ ativo.stats.total_manutencoes }} OS no histórico</span>
               {% endif %}
             </div>
-            <h4>{{ ativo.nome }}</h4>
           </div>
         </div>
         <div class="checkin-card-meta">
-          {% if ativo.em_manutencao %}
-          <span class="badge status-manutencao">Manutenção</span>
-          <span class="badge {{ ativo.local }}">{{ ativo.local | local_label }}</span>
-          {% if ativo.ordem_servico %}<span class="dash-os-tag">OS: {{ ativo.ordem_servico }}</span>{% endif %}
-          {% else %}
-          <span class="badge status-ok">Operacional</span>
-          {% endif %}
-          <time class="checkin-time">{{ ativo.atualizado_em | formatar_data }}</time>
+          <a href="{{ url_for('equipamento_detalhe_route', ativo_id=ativo.id) }}" class="btn btn-secondary btn-sm">Detalhe</a>
         </div>
       </div>
 
-      <form method="post" action="{{ url_for('salvar_verificacao', ativo_id=ativo.id) }}" class="checkin-form" data-checkin-form>
-        <div class="checkin-status-row">
-          <span class="checkin-label">Status de hoje</span>
-          <div class="checkin-status-options">
-            <label class="checkin-option">
-              <input type="radio" name="em_manutencao" value="nao" {% if not ativo.em_manutencao %}checked{% endif %} data-status-toggle>
-              <span>Em operação</span>
-            </label>
-            <label class="checkin-option checkin-option-warn">
-              <input type="radio" name="em_manutencao" value="sim" {% if ativo.em_manutencao %}checked{% endif %} data-status-toggle>
-              <span>Em manutenção</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="checkin-manut-fields {% if not ativo.em_manutencao %}is-hidden{% endif %}" data-manut-fields>
+      {% if is_fiscal %}
+      {% if not ativo.em_manutencao %}
+      <details class="equip-action-panel">
+        <summary class="btn btn-primary btn-sm" style="display:inline-flex;cursor:pointer;list-style:none;">Abrir manutenção</summary>
+        <form method="post" action="{{ url_for('abrir_manutencao_route', ativo_id=ativo.id) }}" class="checkin-form" style="margin-top:0.75rem;">
+          <input type="hidden" name="next" value="{{ url_for('verificacao', foco=ativo.id) }}">
           <div class="form-grid checkin-grid">
             <div class="field">
-              <label>Ordem de serviço (OS)</label>
-              <input type="text" name="ordem_servico" value="{{ ativo.ordem_servico or '' }}" placeholder="Ex: OS-2026-0042" {% if ativo.em_manutencao %}required{% endif %} data-os-input>
+              <label>Número da OS</label>
+              <input type="text" name="os_numero" required placeholder="Ex: OS-2026-0042">
             </div>
             <div class="field">
-              <label>Onde está a manutenção?</label>
-              <select name="local" data-local-select {% if ativo.em_manutencao %}required{% endif %}>
-                <option value="">Selecione...</option>
+              <label>Data de abertura</label>
+              <input type="date" name="data_abertura" value="{{ hoje }}" required>
+            </div>
+            <div class="field">
+              <label>Responsável</label>
+              <input type="text" name="responsavel" required placeholder="Nome do responsável">
+            </div>
+            <div class="field">
+              <label>Local</label>
+              <select name="local">
                 {% for valor, label in locais_manutencao.items() %}
-                <option value="{{ valor }}" {% if ativo.em_manutencao and ativo.local == valor %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ valor }}">{{ label }}</option>
                 {% endfor %}
               </select>
             </div>
             <div class="field full">
-              <label>Observações (opcional)</label>
-              <textarea name="observacoes" rows="2" placeholder="Detalhes da manutenção...">{{ ativo.observacoes or '' }}</textarea>
+              <label>Observações</label>
+              <textarea name="observacoes_abertura" rows="2" required placeholder="Motivo / defeito..."></textarea>
             </div>
           </div>
-        </div>
-
-        <div class="checkin-actions">
-          <button type="submit" class="btn btn-primary btn-sm">Salvar check-in</button>
-        </div>
-      </form>
+          <div class="checkin-actions">
+            <button type="submit" class="btn btn-primary btn-sm">Confirmar abertura</button>
+          </div>
+        </form>
+      </details>
+      {% else %}
+      <details class="equip-action-panel">
+        <summary class="btn btn-secondary btn-sm" style="display:inline-flex;cursor:pointer;list-style:none;">Encerrar manutenção</summary>
+        <form method="post" action="{{ url_for('encerrar_manutencao_route', ativo_id=ativo.id) }}" class="checkin-form" style="margin-top:0.75rem;">
+          <input type="hidden" name="next" value="{{ url_for('verificacao', foco=ativo.id) }}">
+          <div class="form-grid checkin-grid">
+            <div class="field">
+              <label>Data de conclusão</label>
+              <input type="date" name="data_conclusao" value="{{ hoje }}" required>
+            </div>
+            <div class="field full">
+              <label>Observações de encerramento</label>
+              <textarea name="observacoes_encerramento" rows="2" required placeholder="Serviço realizado..."></textarea>
+            </div>
+          </div>
+          <div class="checkin-actions">
+            <button type="submit" class="btn btn-primary btn-sm">Voltar para Ativo</button>
+          </div>
+        </form>
+      </details>
+      {% endif %}
+      {% endif %}
     </article>
     {% endfor %}
   </div>
-  {% else %}
-  <div class="dash-list" id="dash-list">
-    {% for ativo in ativos %}
-    <article class="dash-asset-row {% if ativo.em_manutencao %}is-manutencao{% else %}is-operacional{% endif %}"
-             data-search="{{ ativo.codigo|lower }} {{ ativo.nome|lower }} {{ (ativo.ordem_servico or '')|lower }}"
-             data-status="{{ 'manutencao' if ativo.em_manutencao else 'operacional' }}"
-             data-local="{{ ativo.local }}">
-      <div class="dash-asset-status-col">
-        <span class="status-indicator {% if ativo.em_manutencao %}warn{% else %}ok{% endif %}" title="{{ 'Em manutenção' if ativo.em_manutencao else 'Operacional' }}"></span>
-      </div>
-      <div class="dash-asset-main">
-        <div class="dash-asset-title-row">
-          <span class="asset-code-lg">{{ ativo.codigo }}</span>
-          <h4>{{ ativo.nome }}</h4>
-        </div>
-        <div class="dash-asset-tags">
-          {% if ativo.em_manutencao %}
-          <span class="badge status-manutencao">Manutenção</span>
-          {% else %}
-          <span class="badge status-ok">Operacional</span>
-          {% endif %}
-          {% if ativo.em_manutencao %}
-          <span class="badge {{ ativo.local }}">{{ ativo.local | local_label }}</span>
-          {% endif %}
-          {% if ativo.ordem_servico %}
-          <span class="dash-os-tag">OS: {{ ativo.ordem_servico }}</span>
-          {% endif %}
-        </div>
-        {% if ativo.observacoes %}
-        <p class="dash-asset-obs">{{ ativo.observacoes }}</p>
-        {% endif %}
-      </div>
-      <div class="dash-asset-date">
-        <span class="dash-date-label">Atualizado</span>
-        <time>{{ ativo.atualizado_em | formatar_data }}</time>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-  {% endif %}
 
   <div class="dash-empty-filter hidden-row" id="dash-no-results">
-    <p>Nenhum ativo encontrado com os filtros atuais.</p>
+    <p>Nenhum equipamento encontrado com os filtros atuais.</p>
   </div>
 
   {% else %}
   <div class="empty-state">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
-    <h4>Nenhum ativo cadastrado</h4>
-    <p>Importe uma lista CSV ou cadastre manualmente para começar.</p>
+    <h4>Nenhum equipamento cadastrado</h4>
+    <p>Cadastre varredeiras, compactadores e demais equipamentos da frota.</p>
     {% if is_fiscal %}
-    <a href="{{ url_for('edicao') }}" class="btn btn-primary">Cadastrar ativos</a>
+    <a href="{{ url_for('edicao') }}" class="btn btn-primary">Cadastrar equipamentos</a>
     {% endif %}
   </div>
   {% endif %}
