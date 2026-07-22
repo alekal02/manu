@@ -1,0 +1,102 @@
+<article class="admin-hist-card fiscal-registro-card">
+  <div class="admin-hist-head">
+    <div class="fiscal-registro-top">
+      <span class="report-hour">{{ reg.criado_em | formatar_data }}</span>
+      <span class="badge report-acao-{{ reg.acao }}">{{ reg.acao | acao_label }}</span>
+      {% if reg.codigo and reg.codigo != '—' %}
+      <span class="asset-code-lg">{{ reg.codigo }}</span>
+      {% endif %}
+      <strong>{{ reg.nome }}</strong>
+    </div>
+    <p class="report-meta">Por {{ reg.usuario_nome or reg.usuario }} ({{ reg.usuario }})</p>
+  </div>
+
+  <div class="fiscal-registro-meta">
+    {% if reg.ordem_servico %}
+    <span class="dash-os-tag">OS {{ reg.ordem_servico }}</span>
+    {% endif %}
+    {% if reg.local %}
+    <span class="badge">{{ reg.local | local_label }}</span>
+    {% endif %}
+    {% if reg.em_manutencao is not none %}
+    <span class="badge {% if reg.em_manutencao %}status-manutencao{% else %}status-ok{% endif %}">
+      {{ 'Em manutenção' if reg.em_manutencao else 'Operacional' }}
+    </span>
+    {% endif %}
+  </div>
+
+  {% if reg.detalhes %}
+  <p class="report-detalhes">{{ reg.detalhes }}</p>
+  {% endif %}
+
+  {% if link_equip and reg.ativo_id %}
+  <p class="fiscal-registro-link">
+    <a href="{{ url_for('equipamento_detalhe_route', ativo_id=reg.ativo_id) }}">Ver equipamento →</a>
+  </p>
+  {% endif %}
+
+  {% if show_admin_edit %}
+  <details class="admin-hist-edit">
+    <summary>Alterar registro</summary>
+    <form method="post" action="{{ url_for('admin_editar_historico', historico_id=reg.id) }}" class="form-grid checkin-grid">
+      <input type="hidden" name="base_id" value="{{ base_id }}">
+      <input type="hidden" name="aba" value="{{ aba }}">
+      <input type="hidden" name="data" value="{{ data_ref }}">
+      <input type="hidden" name="ref_mes" value="{{ ref_mes }}">
+      <input type="hidden" name="q" value="{{ busca or '' }}">
+      <div class="field">
+        <label>Código</label>
+        <input type="text" name="codigo" value="{{ reg.codigo }}">
+      </div>
+      <div class="field">
+        <label>Nome</label>
+        <input type="text" name="nome" value="{{ reg.nome }}" required>
+      </div>
+      <div class="field">
+        <label>Ação</label>
+        <select name="acao">
+          {% for valor, label in acoes.items() %}
+          <option value="{{ valor }}" {% if reg.acao == valor %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Status</label>
+        <select name="em_manutencao">
+          <option value="nao" {% if not reg.em_manutencao %}selected{% endif %}>Operacional</option>
+          <option value="sim" {% if reg.em_manutencao %}selected{% endif %}>Em manutenção</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Local</label>
+        <select name="local">
+          {% for valor, label in locais.items() %}
+          <option value="{{ valor }}" {% if reg.local == valor %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>OS</label>
+        <input type="text" name="ordem_servico" value="{{ reg.ordem_servico or '' }}">
+      </div>
+      <div class="field full">
+        <label>Detalhes</label>
+        <textarea name="detalhes" rows="2">{{ reg.detalhes }}</textarea>
+      </div>
+      <div class="form-actions full">
+        <button type="submit" class="btn btn-admin btn-sm">Salvar alteração</button>
+      </div>
+    </form>
+    <form method="post" action="{{ url_for('admin_excluir_historico', historico_id=reg.id) }}"
+          class="form-actions form-actions-danger"
+          onsubmit="return confirm('Excluir este registro do histórico?');">
+      <input type="hidden" name="base_id" value="{{ base_id }}">
+      <input type="hidden" name="aba" value="{{ aba }}">
+      <input type="hidden" name="data" value="{{ data_ref }}">
+      <input type="hidden" name="ref_mes" value="{{ ref_mes }}">
+      <input type="hidden" name="q" value="{{ busca or '' }}">
+      <button type="submit" class="btn btn-danger btn-sm">Excluir registro</button>
+    </form>
+  </details>
+  {% endif %}
+</article>

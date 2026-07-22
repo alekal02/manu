@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Cadastrar equipamentos — ManuControl{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h2>Cadastrar equipamentos</h2>
+      <p>Importe listas ou cadastre equipamentos. O fiscal pode <strong>adicionar</strong> informações, mas não apagar dados já registrados — o histórico fica preservado para controle.</p>
+    </div>
+    <div class="page-header-actions">
+      <span class="badge nivel-fiscal">{{ ativos|length }} equipamento(s)</span>
+      <a href="{{ url_for('verificacao') }}" class="btn btn-secondary">Voltar ao painel</a>
+    </div>
+  </div>
+</section>
+
+{% if request.args.get('salvo') %}
+<div class="alert success">Alterações salvas e registradas no histórico do administrador.</div>
+{% endif %}
+
+{% if request.args.get('erro') == 'preencha_nome_codigo' %}
+<div class="alert error">Preencha o nome e o código do equipamento.</div>
+{% endif %}
+
+<div class="panel">
+  <div class="panel-body">
+    <div data-tabs>
+      <div class="tabs">
+        <button type="button" class="tab-btn active" data-tab="tab-importar">Importar CSV</button>
+        <button type="button" class="tab-btn" data-tab="tab-novo">Novo equipamento</button>
+        <button type="button" class="tab-btn" data-tab="tab-editar">Editar ({{ ativos|length }})</button>
+      </div>
+
+      <div id="tab-importar" class="tab-panel active">
+        <p class="import-help">
+          Envie um arquivo CSV ou Excel (<code>.xlsx</code>) com as colunas <code>nome</code> e <code>codigo</code>.
+          Colunas opcionais: <code>tipo</code>, <code>patrimonio</code>, <code>data_aquisicao</code>.
+          Equipamentos existentes terão o cadastro atualizado; novos serão adicionados.
+        </p>
+        <form method="post" action="{{ url_for('importar_ativos') }}" enctype="multipart/form-data" class="import-form">
+          <div class="field">
+            <label for="arquivo">Arquivo CSV ou Excel</label>
+            <input type="file" id="arquivo" name="arquivo" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Importar lista
+          </button>
+        </form>
+        <div class="import-model-actions">
+          <a href="{{ url_for('download_modelo_importacao') }}" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Baixar modelo Excel
+          </a>
+        </div>
+        <details class="csv-example">
+          <summary>Ver exemplo de arquivo CSV</summary>
+          <pre>nome,codigo,tipo,patrimonio,data_aquisicao
+Varredeira 01,VAR-01,varredeira,PAT-100,2024-03-15
+Compactador 02,COM-02,caminhao_compactador,PAT-210,2023-11-01</pre>
+        </details>
+      </div>
+
+      <div id="tab-novo" class="tab-panel">
+        <form method="post" action="{{ url_for('novo_ativo') }}">
+          <div class="form-grid">
+            <div class="field">
+              <label for="novo-nome">Nome</label>
+              <input type="text" id="novo-nome" name="nome" placeholder="Ex: Varredeira Norte 01" required>
+            </div>
+            <div class="field">
+              <label for="novo-codigo">Código / identificação</label>
+              <input type="text" id="novo-codigo" name="codigo" placeholder="Ex: VAR-01" required>
+            </div>
+            <div class="field">
+              <label for="novo-tipo">Tipo</label>
+              <select id="novo-tipo" name="tipo">
+                {% for valor, label in tipos_equipamento.items() %}
+                <option value="{{ valor }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="novo-patrimonio">Patrimônio</label>
+              <input type="text" id="novo-patrimonio" name="patrimonio" placeholder="Nº patrimônio">
+            </div>
+            <div class="field">
+              <label for="novo-aquisicao">Data de aquisição</label>
+              <input type="date" id="novo-aquisicao" name="data_aquisicao">
+            </div>
+            <div class="field full">
+              <label for="novo-obs">Observações</label>
+              <textarea id="novo-obs" name="observacoes" rows="3" placeholder="Detalhes do equipamento..."></textarea>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Adicionar equipamento</button>
+        </form>
+      </div>
+
+      <div id="tab-editar" class="tab-panel">
+        {% if ativos %}
+        <p class="import-help" style="margin-bottom: 1rem;">
+          Clique para expandir. Você pode complementar o cadastro, mas não remover patrimônio, datas ou observações já informadas. Novos registros de andamento entram pela OS no painel.
+        </p>
+        <div class="accordion-list">
+          {% for ativo in ativos %}
+          <div class="accordion-item{% if loop.first %} open{% endif %}">
+            <button type="button" class="accordion-trigger">
+              <div class="accordion-trigger-left">
+                <span class="accordion-status {% if ativo.em_manutencao %}manutencao{% else %}ok{% endif %}"></span>
+                <div>
+                  <div class="accordion-title">{{ ativo.nome }}</div>
+                  <div class="accordion-meta">
+                    <span class="asset-code">{{ ativo.codigo }}</span>
+                    · {{ ativo.tipo_label }}
+                    · {{ ativo.status_label }}
+                    · {{ ativo.atualizado_em | formatar_data }}
+                  </div>
+                </div>
+              </div>
+              <svg class="accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="accordion-body">
+              <form method="post" action="{{ url_for('salvar_ativo_route', ativo_id=ativo.id) }}">
+                <div class="form-grid">
+                  <div class="field">
+                    <label>Nome</label>
+                    <input type="text" name="nome" value="{{ ativo.nome }}" required>
+                  </div>
+                  <div class="field">
+                    <label>Código / identificação</label>
+                    <input type="text" name="codigo" value="{{ ativo.codigo }}" required>
+                  </div>
+                  <div class="field">
+                    <label>Tipo</label>
+                    <select name="tipo">
+                      {% for valor, label in tipos_equipamento.items() %}
+                      <option value="{{ valor }}" {% if ativo.tipo == valor %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Patrimônio</label>
+                    <input type="text" name="patrimonio" value="{{ ativo.patrimonio or '' }}">
+                  </div>
+                  <div class="field">
+                    <label>Data de aquisição</label>
+                    <input type="date" name="data_aquisicao" value="{{ ativo.data_aquisicao or '' }}">
+                  </div>
+                  <div class="field">
+                    <label>Status atual</label>
+                    <input type="text" value="{{ ativo.status_label }}" disabled>
+                  </div>
+                  <div class="field full">
+                    <label>Observações registradas</label>
+                    {% if ativo.observacoes %}
+                    <div class="readonly-block" style="white-space:pre-line;">{{ ativo.observacoes }}</div>
+                    {% else %}
+                    <p class="import-help">Nenhuma observação cadastrada ainda.</p>
+                    {% endif %}
+                  </div>
+                  <div class="field full">
+                    <label>Adicionar observação</label>
+                    <textarea name="observacoes_adicionais" rows="2" placeholder="Texto novo será acrescentado ao histórico, sem apagar o anterior"></textarea>
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary btn-sm">Salvar cadastro</button>
+                  <a href="{{ url_for('equipamento_detalhe_route', ativo_id=ativo.id) }}" class="btn btn-secondary btn-sm">Ver detalhe / OS</a>
+                </div>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+          <h4>Nenhum equipamento para editar</h4>
+          <p>Importe um CSV ou cadastre um novo nas abas ao lado.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

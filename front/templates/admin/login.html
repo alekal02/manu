@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#c2410c">
+  <title>Login Admin — ManuControl</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-page admin-login-page">
+  <div class="login-brand-panel admin-brand-panel">
+    <div class="login-brand-content">
+      <div class="brand-logo admin-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <p class="login-brand-kicker" style="color:#fdba74">Painel Admin</p>
+      <h1>Controle total das filiais</h1>
+      <p>Gerencie usuários, filiais e o histórico de manutenção informado pelos fiscais.</p>
+      <ul class="feature-list">
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Histórico por filial com edição exclusiva
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Criar e gerenciar gerentes e fiscais
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Ativar, desativar e redefinir acessos
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="login-form-panel">
+    <div class="login-card">
+      <div class="login-mobile-brand">
+        <div class="brand-logo admin-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <strong>Painel Admin</strong>
+      </div>
+      <div class="login-card-header">
+        <h2>Acesso administrador</h2>
+        <p>Área restrita — somente administradores</p>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="alert {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <form method="post" class="login-form">
+        <div class="field">
+          <label for="usuario">Usuário admin</label>
+          <input type="text" id="usuario" name="usuario" placeholder="admin" required autofocus>
+        </div>
+        <div class="field">
+          <label for="senha">Senha</label>
+          <input type="password" id="senha" name="senha" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn btn-admin btn-full">Entrar no painel</button>
+      </form>
+
+      <p class="login-back-link">
+        <a href="{{ url_for('login') }}">← Voltar ao login de usuários</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

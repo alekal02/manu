@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "nome": "Compressor AR-001",
+    "codigo": "AR-001",
+    "ordem_servico": "OS-2026-0042",
+    "local": "base",
+    "em_manutencao": true,
+    "observacoes": "Troca de rolamento prevista para esta semana.",
+    "atualizado_em": "2026-07-02T10:00:00"
+  },
+  {
+    "id": 2,
+    "nome": "Gerador GE-102",
+    "codigo": "GE-102",
+    "ordem_servico": "OS-2026-0038",
+    "local": "terceiros",
+    "em_manutencao": true,
+    "observacoes": "Enviado para manutenção externa - retorno previsto em 5 dias.",
+    "atualizado_em": "2026-07-01T14:30:00"
+  },
+  {
+    "id": 3,
+    "nome": "Bomba Hidráulica BH-045",
+    "codigo": "BH-045",
+    "ordem_servico": "OS-2026-0714",
+    "local": "base",
+    "em_manutencao": false,
+    "observacoes": "Operando normalmente.",
+    "atualizado_em": "2026-07-02T15:05:44"
+  },
+  {
+    "id": 4,
+    "nome": "Transformador TR-220",
+    "codigo": "TR-220",
+    "ordem_servico": "",
+    "local": "terceiros",
+    "em_manutencao": false,
+    "observacoes": "",
+    "atualizado_em": "2026-06-28T16:00:00"
+  }
+]

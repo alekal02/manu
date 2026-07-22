@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Meu Perfil — ManuControl{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <h2>Meu perfil</h2>
+  <p>Informações da sua conta e alteração de senha.</p>
+</section>
+
+<div class="perfil-grid">
+  <div class="panel">
+    <div class="panel-header">
+      <h3>Informações da conta</h3>
+    </div>
+    <div class="panel-body">
+      <dl class="info-grid">
+        <div class="info-item">
+          <dt>Filial</dt>
+          <dd>{{ user.base_codigo }} — {{ user.base_nome }}</dd>
+        </div>
+        <div class="info-item">
+          <dt>Usuário</dt>
+          <dd>{{ user.usuario }}</dd>
+        </div>
+        <div class="info-item">
+          <dt>Nome</dt>
+          <dd>{{ user.nome }}</dd>
+        </div>
+        <div class="info-item">
+          <dt>Perfil de acesso</dt>
+          <dd><span class="badge nivel-{{ user.nivel }}">{{ user.nivel | capitalize }}</span></dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <h3>Alterar senha</h3>
+        <p>Mínimo de 4 caracteres</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <form method="post" class="perfil-form">
+        <div class="field">
+          <label for="senha_atual">Senha atual</label>
+          <input type="password" id="senha_atual" name="senha_atual" required autocomplete="current-password">
+        </div>
+        <div class="field">
+          <label for="nova_senha">Nova senha</label>
+          <input type="password" id="nova_senha" name="nova_senha" minlength="4" required autocomplete="new-password">
+        </div>
+        <div class="field">
+          <label for="confirmar_senha">Confirmar nova senha</label>
+          <input type="password" id="confirmar_senha" name="confirmar_senha" minlength="4" required autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn btn-primary">Salvar nova senha</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

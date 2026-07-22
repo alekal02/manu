@@ -1,0 +1,1068 @@
+import os
+from datetime import datetime, timedelta
+from functools import wraps
+
+from flask import (
+    Flask,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    session,
+    url_for,
+)
+from io import BytesIO
+from werkzeug.security import check_password_hash
+
+from config import SECRET_KEY
+from db import init_db
+from pdf_reports import gerar_pdf_diario, gerar_pdf_mensal, gerar_pdf_manutencoes
+from services import (
+    ACAO_LABEL,
+    FASES_OS,
+    LOCAIS,
+    LOCAIS_MANUTENCAO,
+    TIPOS_EQUIPAMENTO,
+    abrir_manutencao,
+    adicionar_anotacao_manutencao,
+    admin_alterar_senha_admin,
+    admin_atualizar_base,
+    admin_atualizar_usuario,
+    admin_criar_usuario,
+    admin_excluir_base,
+    admin_resetar_senha,
+    admin_toggle_usuario,
+    autenticar,
+    autenticar_admin,
+    atualizar_historico,
+    atualizar_dados_os_aberta,
+    salvar_acompanhamento_os_aberta,
+    atualizar_fase_manutencao,
+    contar_bases,
+    criar_ativo,
+    encerrar_manutencao,
+    equipamento_detalhe,
+    excluir_historico,
+    export_csv_manutencoes,
+    importar_ativos_csv,
+    listar_ativos,
+    listar_ativos_com_stats,
+    listar_bases,
+    listar_bases_admin,
+    listar_manutencoes_base,
+    listar_todos_usuarios,
+    normalizar_local,
+    normalizar_tipo,
+    obter_admin,
+    obter_base,
+    obter_ativo,
+    obter_historico,
+    obter_usuario,
+    obter_usuario_por_id,
+    relatorio_diario,
+    relatorio_manutencoes,
+    relatorio_atividade_fiscal,
+    relatorio_mensal,
+    salvar_ativo,
+    seed_bases,
+    atualizar_senha,
+)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+FRONT_DIR = os.path.join(ROOT_DIR, "front")
+TEMPLATES_DIR = os.path.join(FRONT_DIR, "templates")
+STATIC_DIR = os.path.join(FRONT_DIR, "static")
+
+if not os.path.isdir(TEMPLATES_DIR):
+    raise RuntimeError(
+        f"Pasta de templates não encontrada: {TEMPLATES_DIR}\n"
+        "Execute o projeto a partir de C:\\manu\\manu com: python app.py"
+    )
+
+app = Flask(
+    __name__,
+    template_folder=TEMPLATES_DIR,
+    static_folder=STATIC_DIR,
+)
+app.secret_key = SECRET_KEY
+
+
+def formatar_data(iso_str):
+    if not iso_str:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        return dt.strftime("%d/%m/%Y %H:%M")
+    except ValueError:
+        return iso_str
+
+
+app.jinja_env.filters["formatar_data"] = formatar_data
+
+
+@app.template_filter("acao_label")
+def acao_label_filter(acao):
+    return ACAO_LABEL.get(acao, acao.capitalize())
+
+
+@app.template_filter("tipo_label")
+def tipo_label_filter(tipo):
+    return TIPOS_EQUIPAMENTO.get(tipo, tipo or "—")
+
+
+@app.template_filter("local_label")
+def local_label_filter(local):
+    return LOCAIS.get(local, local or "—")
+
+
+@app.template_filter("formatar_data_curta")
+def formatar_data_curta_filter(iso_str):
+    if not iso_str:
+        return "—"
+    try:
+        if len(iso_str) == 10:
+            dt = datetime.strptime(iso_str, "%Y-%m-%d")
+        else:
+            dt = datetime.fromisoformat(iso_str)
+        return dt.strftime("%d/%m/%Y")
+    except ValueError:
+        return iso_str
+
+
+@app.template_filter("formatar_hora")
+def formatar_hora_filter(iso_str):
+    if not iso_str:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        return dt.strftime("%H:%M")
+    except ValueError:
+        return iso_str
+
+
+@app.template_filter("nome_mes")
+def nome_mes_filter(mes):
+    meses = [
+        "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+    ]
+    try:
+        return meses[int(mes)]
+    except (ValueError, IndexError):
+        return mes
+
+
+def usuario_logado():
+    if session.get("tipo") == "admin":
+        return None
+    if "usuario" not in session or "base_id" not in session:
+        return None
+    user = obter_usuario(session["base_id"], session["usuario"])
+    if not user:
+        return None
+    user["base_nome"] = session.get("base_nome", "")
+    user["base_codigo"] = session.get("base_codigo", "")
+    return user
+
+
+def admin_logado():
+    if session.get("tipo") != "admin" or "admin_id" not in session:
+        return None
+    return obter_admin(session["admin_id"])
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not usuario_logado():
+            return redirect(url_for("login", next=request.url))
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+def fiscal_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = usuario_logado()
+        if not user:
+            return redirect(url_for("login", next=request.url))
+        if user["nivel"] != "fiscal":
+            flash("Acesso restrito ao perfil Fiscal.", "error")
+            return redirect(url_for("verificacao"))
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+def gerente_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = usuario_logado()
+        if not user:
+            return redirect(url_for("login", next=request.url))
+        if user["nivel"] != "gerente":
+            flash("Relatórios são exclusivos do Gerente.", "error")
+            return redirect(url_for("verificacao"))
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not admin_logado():
+            return redirect(url_for("admin_login", next=request.url))
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+def base_id_sessao():
+    return session["base_id"]
+
+
+def usuario_acao():
+    user = usuario_logado()
+    if not user:
+        return None, None
+    return user["usuario"], user["nome"]
+
+
+@app.context_processor
+def inject_user():
+    user = usuario_logado()
+    admin = admin_logado()
+    return {
+        "current_user": user,
+        "current_admin": admin,
+        "is_fiscal": user and user["nivel"] == "fiscal",
+        "is_gerente": user and user["nivel"] == "gerente",
+        "is_admin": admin is not None,
+        "locais": LOCAIS,
+        "tipos_equipamento": TIPOS_EQUIPAMENTO,
+        "locais_manutencao": LOCAIS_MANUTENCAO,
+        "fases_os": FASES_OS,
+    }
+
+
+@app.before_request
+def garantir_banco():
+    if request.endpoint in ("static", None):
+        return
+    init_db()
+    if request.endpoint == "login" and request.method == "GET" and contar_bases() == 0:
+        seed_bases(20)
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if admin_logado():
+        return redirect(url_for("admin_usuarios"))
+    if usuario_logado():
+        return redirect(url_for("verificacao"))
+
+    bases = listar_bases()
+
+    if request.method == "POST":
+        base_id = request.form.get("base_id", "").strip()
+        usuario = request.form.get("usuario", "").strip().lower()
+        senha = request.form.get("senha", "")
+
+        if not base_id:
+            flash("Selecione a filial.", "error")
+            return render_template("login.html", bases=bases)
+
+        user = autenticar(base_id, usuario, senha)
+        if user:
+            session.clear()
+            session["base_id"] = user["base_id"]
+            session["base_nome"] = user["base_nome"]
+            session["base_codigo"] = user["base_codigo"]
+            session["usuario"] = user["usuario"]
+            session["nivel"] = user["nivel"]
+            session["nome"] = user["nome"]
+            next_url = request.args.get("next")
+            if next_url:
+                return redirect(next_url)
+            return redirect(url_for("verificacao"))
+        flash("Filial, usuário ou senha inválidos.", "error")
+
+    return render_template("login.html", bases=bases)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("Você saiu do sistema.", "success")
+    return redirect(url_for("login"))
+
+
+@app.route("/perfil", methods=["GET", "POST"])
+@login_required
+def perfil():
+    user = usuario_logado()
+
+    if request.method == "POST":
+        senha_atual = request.form.get("senha_atual", "")
+        nova_senha = request.form.get("nova_senha", "")
+        confirmar = request.form.get("confirmar_senha", "")
+
+        if not check_password_hash(user["senha_hash"], senha_atual):
+            flash("Senha atual incorreta.", "error")
+            return render_template("perfil.html", user=user)
+
+        if len(nova_senha) < 4:
+            flash("A nova senha deve ter pelo menos 4 caracteres.", "error")
+            return render_template("perfil.html", user=user)
+
+        if nova_senha != confirmar:
+            flash("As senhas não coincidem.", "error")
+            return render_template("perfil.html", user=user)
+
+        atualizar_senha(user["base_id"], user["usuario"], nova_senha)
+        flash("Senha alterada com sucesso!", "success")
+        return redirect(url_for("perfil"))
+
+    return render_template("perfil.html", user=user)
+
+
+@app.route("/")
+@login_required
+def verificacao():
+    ativos = listar_ativos_com_stats(base_id_sessao())
+    em_manutencao = [a for a in ativos if a.get("em_manutencao")]
+    operacionais = [a for a in ativos if not a.get("em_manutencao")]
+    total = len(ativos)
+    total_manutencao = len(em_manutencao)
+    pct_operacional = round((len(operacionais) / total) * 100) if total else 0
+    pct_manutencao = round((total_manutencao / total) * 100) if total else 0
+    return render_template(
+        "verificacao.html",
+        ativos=ativos,
+        operacionais=operacionais,
+        em_manutencao=em_manutencao,
+        total=total,
+        total_manutencao=total_manutencao,
+        total_operacional=len(operacionais),
+        pct_operacional=pct_operacional,
+        pct_manutencao=pct_manutencao,
+        hoje=datetime.now().strftime("%Y-%m-%d"),
+    )
+
+
+@app.route("/equipamentos/<string:ativo_id>")
+@login_required
+def equipamento_detalhe_route(ativo_id):
+    eq = equipamento_detalhe(base_id_sessao(), ativo_id)
+    if not eq:
+        flash("Equipamento não encontrado.", "error")
+        return redirect(url_for("verificacao"))
+    return render_template("equipamento.html", eq=eq, hoje=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/equipamentos/<string:ativo_id>/manutencao/abrir", methods=["POST"])
+@fiscal_required
+def abrir_manutencao_route(ativo_id):
+    try:
+        abrir_manutencao(
+            base_id_sessao(),
+            ativo_id,
+            {
+                "os_numero": request.form.get("os_numero", "").strip(),
+                "data_abertura": request.form.get("data_abertura", "").strip(),
+                "observacoes_abertura": request.form.get("observacoes_abertura", "").strip(),
+                "responsavel": request.form.get("responsavel", "").strip(),
+                "local": request.form.get("local", "base").strip(),
+            },
+            *usuario_acao(),
+        )
+        flash("Manutenção aberta e registrada no histórico.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    nxt = request.form.get("next") or url_for("verificacao", foco=ativo_id)
+    return redirect(nxt)
+
+
+@app.route("/equipamentos/<string:ativo_id>/manutencao/encerrar", methods=["POST"])
+@fiscal_required
+def encerrar_manutencao_route(ativo_id):
+    try:
+        encerrar_manutencao(
+            base_id_sessao(),
+            ativo_id,
+            {
+                "data_conclusao": request.form.get("data_conclusao", "").strip(),
+                "observacoes_encerramento": request.form.get(
+                    "observacoes_encerramento", ""
+                ).strip(),
+            },
+            *usuario_acao(),
+        )
+        flash("Manutenção encerrada. Equipamento voltou ao status Ativo.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    nxt = request.form.get("next") or url_for("verificacao", foco=ativo_id)
+    return redirect(nxt)
+
+
+@app.route("/equipamentos/<string:ativo_id>/manutencao/fase", methods=["POST"])
+@fiscal_required
+def atualizar_fase_manutencao_route(ativo_id):
+    try:
+        atualizar_fase_manutencao(
+            base_id_sessao(),
+            ativo_id,
+            request.form.get("fase", "").strip(),
+            observacao=request.form.get("observacao_fase", "").strip(),
+            usuario=usuario_acao()[0],
+            usuario_nome=usuario_acao()[1],
+        )
+        flash("Fase da OS atualizada.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    nxt = request.form.get("next") or url_for("equipamento_detalhe_route", ativo_id=ativo_id)
+    return redirect(nxt)
+
+
+@app.route("/equipamentos/<string:ativo_id>/manutencao/anotacao", methods=["POST"])
+@fiscal_required
+def adicionar_anotacao_manutencao_route(ativo_id):
+    user, nome = usuario_acao()
+    try:
+        adicionar_anotacao_manutencao(
+            base_id_sessao(),
+            ativo_id,
+            request.form.get("texto_anotacao", "").strip(),
+            usuario=user,
+            usuario_nome=nome,
+        )
+        flash("Observação registrada na OS.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    nxt = request.form.get("next") or url_for("equipamento_detalhe_route", ativo_id=ativo_id)
+    return redirect(nxt)
+
+
+@app.route("/equipamentos/<string:ativo_id>/manutencao/atualizar", methods=["POST"])
+@fiscal_required
+def atualizar_dados_os_aberta_route(ativo_id):
+    user, nome = usuario_acao()
+    try:
+        atualizar_dados_os_aberta(
+            base_id_sessao(),
+            ativo_id,
+            {
+                "responsavel": request.form.get("responsavel", "").strip(),
+                "local": request.form.get("local", "").strip(),
+            },
+            usuario=user,
+            usuario_nome=nome,
+        )
+        flash("Dados da OS atualizados.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    nxt = request.form.get("next") or url_for("equipamento_detalhe_route", ativo_id=ativo_id)
+    return redirect(nxt)
+
+
+@app.route("/equipamentos/<string:ativo_id>/manutencao/salvar", methods=["POST"])
+@fiscal_required
+def salvar_acompanhamento_os_aberta_route(ativo_id):
+    user, nome = usuario_acao()
+    try:
+        partes = salvar_acompanhamento_os_aberta(
+            base_id_sessao(),
+            ativo_id,
+            {
+                "texto_anotacao": request.form.get("texto_anotacao", "").strip(),
+                "responsavel": request.form.get("responsavel", "").strip(),
+                "local": request.form.get("local", "").strip(),
+                "fase": request.form.get("fase", "").strip(),
+                "observacao_fase": request.form.get("observacao_fase", "").strip(),
+            },
+            usuario=user,
+            usuario_nome=nome,
+        )
+        flash(f"Alterações salvas: {partes}.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    nxt = request.form.get("next") or url_for("equipamento_detalhe_route", ativo_id=ativo_id)
+    return redirect(nxt)
+
+
+@app.route("/edicao")
+@fiscal_required
+def edicao():
+    ativos = listar_ativos_com_stats(base_id_sessao())
+    return render_template("edicao.html", ativos=ativos)
+
+
+@app.route("/edicao/salvar/<string:ativo_id>", methods=["POST"])
+@fiscal_required
+def salvar_ativo_route(ativo_id):
+    ativo = obter_ativo(base_id_sessao(), ativo_id)
+    if not ativo:
+        return redirect(url_for("edicao"))
+
+    nome = request.form.get("nome", "").strip()
+    codigo = request.form.get("codigo", "").strip()
+    if not nome or not codigo:
+        flash("Nome e código são obrigatórios.", "error")
+        return redirect(url_for("edicao", erro="preencha_nome_codigo"))
+
+    try:
+        salvar_ativo(
+            base_id_sessao(),
+            ativo_id,
+            {
+                "nome": nome,
+                "codigo": codigo,
+                "tipo": normalizar_tipo(request.form.get("tipo", "outros")),
+                "patrimonio": request.form.get("patrimonio", "").strip(),
+                "data_aquisicao": request.form.get("data_aquisicao", "").strip(),
+                "local": normalizar_local(request.form.get("local", "base")),
+                "observacoes_adicionais": request.form.get(
+                    "observacoes_adicionais", ""
+                ).strip(),
+            },
+            *usuario_acao(),
+            modo_fiscal=True,
+        )
+        flash(f"Equipamento {codigo} atualizado e registrado no histórico.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("edicao"))
+
+    return redirect(url_for("edicao", salvo=ativo_id))
+
+
+@app.route("/edicao/novo", methods=["POST"])
+@fiscal_required
+def novo_ativo():
+    nome_ativo = request.form.get("nome", "").strip()
+    codigo = request.form.get("codigo", "").strip()
+
+    if not nome_ativo or not codigo:
+        return redirect(url_for("edicao", erro="preencha_nome_codigo"))
+
+    try:
+        usr, usr_nome = usuario_acao()
+        novo_id = criar_ativo(
+            base_id_sessao(),
+            {
+                "nome": nome_ativo,
+                "codigo": codigo,
+                "tipo": normalizar_tipo(request.form.get("tipo", "outros")),
+                "patrimonio": request.form.get("patrimonio", "").strip(),
+                "data_aquisicao": request.form.get("data_aquisicao", "").strip(),
+                "local": normalizar_local(request.form.get("local", "base")),
+                "observacoes": request.form.get("observacoes", "").strip(),
+            },
+            usr,
+            usr_nome,
+        )
+        flash(f"Equipamento {codigo} cadastrado.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("edicao"))
+
+    return redirect(url_for("edicao", salvo=novo_id))
+
+
+@app.route("/edicao/importar", methods=["POST"])
+@fiscal_required
+def importar_ativos():
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        flash("Selecione um arquivo CSV ou Excel.", "error")
+        return redirect(url_for("edicao"))
+
+    substituir = False
+    try:
+        usr, usr_nome = usuario_acao()
+        resultado = importar_ativos_csv(
+            base_id_sessao(),
+            arquivo.read(),
+            substituir=substituir,
+            usuario=usr,
+            usuario_nome=usr_nome,
+            nome_arquivo=arquivo.filename,
+        )
+        flash(
+            f"Importação concluída: {resultado['inseridos']} novos, "
+            f"{resultado['atualizados']} atualizados "
+            f"({resultado['total']} linhas no arquivo).",
+            "success",
+        )
+    except ValueError as exc:
+        flash(str(exc), "error")
+    except Exception:
+        flash("Erro ao processar o arquivo. Verifique o formato CSV ou Excel.", "error")
+
+    return redirect(url_for("edicao"))
+
+
+@app.route("/edicao/modelo-importacao")
+@fiscal_required
+def download_modelo_importacao():
+    caminho = os.path.join(BASE_DIR, "data", "modelo_importacao_ativos.xlsx")
+    if not os.path.isfile(caminho):
+        flash("Modelo de importação não encontrado.", "error")
+        return redirect(url_for("edicao"))
+    return send_file(
+        caminho,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="modelo_importacao_ativos.xlsx",
+    )
+
+
+@app.route("/relatorios")
+@gerente_required
+def relatorios_manutencao():
+    base_id = base_id_sessao()
+    rel = relatorio_manutencoes(base_id)
+    atividade = relatorio_atividade_fiscal(base_id, limite=50)
+    hoje = datetime.now().date()
+    return render_template(
+        "relatorios.html",
+        rel=rel,
+        atividade=atividade,
+        data_hoje=hoje.strftime("%Y-%m-%d"),
+        data_ontem=(hoje - timedelta(days=1)).strftime("%Y-%m-%d"),
+    )
+
+
+@app.route("/relatorios/csv")
+@gerente_required
+def relatorios_csv():
+    user = usuario_logado()
+    conteudo = export_csv_manutencoes(base_id_sessao())
+    buffer = BytesIO(conteudo.encode("utf-8-sig"))
+    buffer.seek(0)
+    codigo = user.get("base_codigo", "filial")
+    return send_file(
+        buffer,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name=f"manutencoes-{codigo}.csv",
+    )
+
+
+@app.route("/relatorios/pdf")
+@gerente_required
+def relatorios_pdf():
+    user = usuario_logado()
+    base_id = base_id_sessao()
+    tipo = request.args.get("tipo", "manutencoes").strip().lower()
+
+    if tipo == "diario":
+        data_ref = _data_ref_relatorio_diario()
+        diario = relatorio_diario(base_id, data_ref)
+        pdf_bytes = gerar_pdf_diario(
+            user.get("base_codigo", ""),
+            user.get("base_nome", ""),
+            diario,
+        )
+        download_name = (
+            f"relatorio-diario-{user.get('base_codigo', 'filial')}-{data_ref}.pdf"
+        )
+    else:
+        rel = relatorio_manutencoes(base_id)
+        atividade = relatorio_atividade_fiscal(base_id, limite=40)
+        pdf_bytes = gerar_pdf_manutencoes(
+            user.get("base_codigo", ""),
+            user.get("base_nome", ""),
+            rel,
+            atividade=atividade,
+        )
+        download_name = f"relatorio-manutencoes-{user.get('base_codigo', 'filial')}.pdf"
+
+    buffer = BytesIO(pdf_bytes)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=download_name,
+    )
+
+
+def _data_ref_relatorio_diario():
+    data_param = request.args.get("data", "").strip()
+    if data_param:
+        return data_param
+    try:
+        offset = int(request.args.get("offset", "0"))
+    except ValueError:
+        offset = 0
+    return (datetime.now().date() + timedelta(days=offset)).strftime("%Y-%m-%d")
+
+
+@app.route("/api/ativos")
+@login_required
+def api_ativos():
+    return jsonify(listar_ativos(base_id_sessao()))
+
+
+# --- Admin ---
+
+
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    if admin_logado():
+        return redirect(url_for("admin_usuarios"))
+
+    if request.method == "POST":
+        usuario = request.form.get("usuario", "").strip().lower()
+        senha = request.form.get("senha", "")
+        admin = autenticar_admin(usuario, senha)
+        if admin:
+            session.clear()
+            session["tipo"] = "admin"
+            session["admin_id"] = admin["id"]
+            session["admin_usuario"] = admin["usuario"]
+            session["admin_nome"] = admin["nome"]
+            next_url = request.args.get("next")
+            if next_url:
+                return redirect(next_url)
+            return redirect(url_for("admin_usuarios"))
+        flash("Usuário ou senha de administrador inválidos.", "error")
+
+    return render_template("admin/login.html")
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.clear()
+    flash("Sessão administrativa encerrada.", "success")
+    return redirect(url_for("admin_login"))
+
+
+@app.route("/admin/historico")
+@admin_required
+def admin_historico():
+    bases = listar_bases(ativas_apenas=False)
+    base_id = request.args.get("base_id", "").strip()
+    if not base_id and bases:
+        base_id = bases[0]["id"]
+
+    base = obter_base(base_id) if base_id else None
+    aba = request.args.get("aba", "diario")
+    data_ref = request.args.get("data", datetime.now().strftime("%Y-%m-%d"))
+    busca = request.args.get("q", "").strip()
+
+    ref_mes = request.args.get("ref_mes", "")
+    if ref_mes and "-" in ref_mes:
+        partes = ref_mes.split("-")
+        ano, mes = int(partes[0]), int(partes[1])
+    else:
+        ano = int(request.args.get("ano", datetime.now().year))
+        mes = int(request.args.get("mes", datetime.now().month))
+
+    diario = {"registros": [], "total": 0, "por_acao": {}, "data": data_ref, "busca": busca}
+    mensal = {
+        "registros": [],
+        "total": 0,
+        "por_acao": {},
+        "por_dia": [],
+        "dias_com_atividade": 0,
+        "ativos_movimentados": 0,
+        "ano": ano,
+        "mes": mes,
+        "busca": busca,
+        "snapshot": {"total_ativos": 0, "operacionais": 0, "manutencao": 0},
+    }
+    manut = {
+        "ranking": [],
+        "ciclos": [],
+        "total_ciclos": 0,
+        "tempo_medio_geral": None,
+        "equipamentos_com_manutencao": 0,
+        "em_manutencao_agora": 0,
+        "total_equipamentos": 0,
+    }
+    ciclos = []
+
+    if base:
+        if aba == "mensal":
+            mensal = relatorio_mensal(base_id, ano, mes, busca=busca)
+        elif aba == "manutencoes":
+            manut = relatorio_manutencoes(base_id)
+            ciclos = manut["ciclos"]
+        else:
+            diario = relatorio_diario(base_id, data_ref, busca=busca)
+    else:
+        pass
+
+    return render_template(
+        "admin/historico.html",
+        bases=bases,
+        base=base,
+        base_id=base_id,
+        aba=aba,
+        data_ref=data_ref,
+        ref_mes=f"{ano:04d}-{mes:02d}",
+        ano=ano,
+        mes=mes,
+        diario=diario,
+        mensal=mensal,
+        manut=manut,
+        ciclos=ciclos,
+        busca=busca,
+        acoes=ACAO_LABEL,
+    )
+
+
+@app.route("/admin/historico/<string:historico_id>/editar", methods=["POST"])
+@admin_required
+def admin_editar_historico(historico_id):
+    reg = obter_historico(historico_id)
+    if not reg:
+        flash("Registro não encontrado.", "error")
+        return redirect(url_for("admin_historico"))
+
+    try:
+        atualizar_historico(
+            historico_id,
+            {
+                "codigo": request.form.get("codigo", "").strip(),
+                "nome": request.form.get("nome", "").strip(),
+                "acao": request.form.get("acao", "").strip(),
+                "detalhes": request.form.get("detalhes", "").strip(),
+                "ordem_servico": request.form.get("ordem_servico", "").strip(),
+                "local": request.form.get("local", "").strip(),
+                "em_manutencao": request.form.get("em_manutencao") == "sim",
+            },
+        )
+        flash("Registro de histórico atualizado.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+
+    return redirect(
+        url_for(
+            "admin_historico",
+            base_id=reg.get("base_id") or request.form.get("base_id"),
+            aba=request.form.get("aba", "diario"),
+            data=request.form.get("data"),
+            ref_mes=request.form.get("ref_mes"),
+            q=request.form.get("q") or None,
+        )
+    )
+
+
+@app.route("/admin/historico/<string:historico_id>/excluir", methods=["POST"])
+@admin_required
+def admin_excluir_historico(historico_id):
+    try:
+        reg = excluir_historico(historico_id)
+        flash("Registro de histórico removido.", "success")
+        base_id = reg.get("base_id")
+    except ValueError as exc:
+        flash(str(exc), "error")
+        base_id = request.form.get("base_id")
+
+    return redirect(
+        url_for(
+            "admin_historico",
+            base_id=base_id,
+            aba=request.form.get("aba", "diario"),
+            data=request.form.get("data"),
+            ref_mes=request.form.get("ref_mes"),
+            q=request.form.get("q") or None,
+        )
+    )
+
+
+@app.route("/admin/historico/pdf")
+@admin_required
+def admin_historico_pdf():
+    base_id = request.args.get("base_id", "").strip()
+    base = obter_base(base_id) if base_id else None
+    if not base:
+        flash("Selecione uma filial para gerar o PDF.", "error")
+        return redirect(url_for("admin_historico"))
+
+    aba = request.args.get("aba", "diario")
+    filial_codigo = base.get("codigo", "")
+    filial_nome = base.get("nome", "")
+
+    if aba == "mensal":
+        ref_mes = request.args.get("ref_mes", "")
+        if ref_mes and "-" in ref_mes:
+            partes = ref_mes.split("-")
+            ano, mes = int(partes[0]), int(partes[1])
+        else:
+            ano = int(request.args.get("ano", datetime.now().year))
+            mes = int(request.args.get("mes", datetime.now().month))
+
+        mensal = relatorio_mensal(base_id, ano, mes)
+        pdf_bytes = gerar_pdf_mensal(filial_codigo, filial_nome, mensal)
+        nome_arquivo = f"historico-mensal-{filial_codigo}-{ano:04d}-{mes:02d}.pdf"
+    else:
+        data_ref = request.args.get("data", datetime.now().strftime("%Y-%m-%d"))
+        diario = relatorio_diario(base_id, data_ref)
+        pdf_bytes = gerar_pdf_diario(filial_codigo, filial_nome, diario)
+        nome_arquivo = f"historico-diario-{filial_codigo}-{data_ref}.pdf"
+
+    buffer = BytesIO(pdf_bytes)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=nome_arquivo,
+    )
+
+
+@app.route("/admin")
+@app.route("/admin/usuarios")
+@admin_required
+def admin_usuarios():
+    filtro_base = request.args.get("base_id", "").strip()
+    base_id = filtro_base if filtro_base else None
+    usuarios = listar_todos_usuarios(base_id)
+    bases = listar_bases(ativas_apenas=False)
+    return render_template(
+        "admin/usuarios.html",
+        usuarios=usuarios,
+        bases=bases,
+        filtro_base=filtro_base,
+    )
+
+
+@app.route("/admin/filiais")
+@admin_required
+def admin_filiais():
+    bases = listar_bases_admin()
+    return render_template("admin/filiais.html", bases=bases)
+
+
+@app.route("/admin/filiais/<string:base_id>/editar", methods=["POST"])
+@admin_required
+def admin_editar_filial(base_id):
+    try:
+        admin_atualizar_base(base_id, request.form.get("nome", ""))
+        flash("Nome da filial atualizado.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("admin_filiais"))
+
+
+@app.route("/admin/filiais/<string:base_id>/excluir", methods=["POST"])
+@admin_required
+def admin_excluir_filial(base_id):
+    try:
+        base = admin_excluir_base(base_id)
+        flash(
+            f"Filial {base['codigo']} — {base['nome']} excluída com todos os dados vinculados.",
+            "success",
+        )
+    except ValueError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("admin_filiais"))
+
+
+@app.route("/admin/usuarios/novo", methods=["POST"])
+@admin_required
+def admin_novo_usuario():
+    try:
+        admin_criar_usuario(
+            request.form.get("base_id", ""),
+            request.form.get("usuario", ""),
+            request.form.get("nome", ""),
+            request.form.get("nivel", ""),
+            request.form.get("senha", ""),
+        )
+        flash("Usuário criado com sucesso.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    base_id = request.form.get("base_id", "")
+    return redirect(url_for("admin_usuarios", base_id=base_id) if base_id else url_for("admin_usuarios"))
+
+
+@app.route("/admin/usuarios/<string:user_id>/senha", methods=["POST"])
+@admin_required
+def admin_reset_senha(user_id):
+    user = obter_usuario_por_id(user_id)
+    if not user:
+        flash("Usuário não encontrado.", "error")
+        return redirect(url_for("admin_usuarios"))
+
+    nova_senha = request.form.get("nova_senha", "")
+    try:
+        admin_resetar_senha(user_id, nova_senha)
+        flash(f"Senha de {user['usuario']} (Filial {user['base_codigo']}) redefinida.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("admin_usuarios", base_id=user["base_id"]))
+
+
+@app.route("/admin/usuarios/<string:user_id>/toggle", methods=["POST"])
+@admin_required
+def admin_toggle_user(user_id):
+    user = obter_usuario_por_id(user_id)
+    if not user:
+        flash("Usuário não encontrado.", "error")
+        return redirect(url_for("admin_usuarios"))
+
+    ativo = 0 if user["ativo"] else 1
+    admin_toggle_usuario(user_id, ativo)
+    estado = "ativado" if ativo else "desativado"
+    flash(f"Usuário {user['usuario']} {estado}.", "success")
+    return redirect(url_for("admin_usuarios", base_id=user["base_id"]))
+
+
+@app.route("/admin/usuarios/<string:user_id>/editar", methods=["POST"])
+@admin_required
+def admin_editar_usuario(user_id):
+    user = obter_usuario_por_id(user_id)
+    if not user:
+        flash("Usuário não encontrado.", "error")
+        return redirect(url_for("admin_usuarios"))
+
+    try:
+        admin_atualizar_usuario(
+            user_id,
+            request.form.get("nome", ""),
+            request.form.get("nivel", ""),
+        )
+        flash("Usuário atualizado.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("admin_usuarios", base_id=user["base_id"]))
+
+
+@app.route("/admin/perfil", methods=["GET", "POST"])
+@admin_required
+def admin_perfil():
+    admin = admin_logado()
+
+    if request.method == "POST":
+        senha_atual = request.form.get("senha_atual", "")
+        nova_senha = request.form.get("nova_senha", "")
+        confirmar = request.form.get("confirmar_senha", "")
+
+        if nova_senha != confirmar:
+            flash("As senhas não coincidem.", "error")
+            return render_template("admin/perfil.html", admin=admin)
+
+        try:
+            admin_alterar_senha_admin(admin["id"], senha_atual, nova_senha)
+            flash("Senha de administrador alterada.", "success")
+            return redirect(url_for("admin_perfil"))
+        except ValueError as exc:
+            flash(str(exc), "error")
+
+    return render_template("admin/perfil.html", admin=admin)
+
+
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=5000)

@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}{{ eq.codigo }} — {{ eq.nome }} — ManuControl{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div class="page-header-row">
+    <div>
+      <p class="dash-eyebrow"><a href="{{ url_for('verificacao') }}">← Equipamentos</a></p>
+      <h2>{{ eq.nome }}</h2>
+      <p>
+        <span class="asset-code-lg">{{ eq.codigo }}</span>
+        · {{ eq.tipo_label }}
+        {% if eq.patrimonio %} · Patrimônio {{ eq.patrimonio }}{% endif %}
+      </p>
+    </div>
+    <div class="page-header-actions">
+      <span class="badge {% if eq.em_manutencao %}status-manutencao{% else %}status-ok{% endif %}">{{ eq.status_label }}</span>
+    </div>
+  </div>
+</section>
+
+<div class="dash-kpi-grid" style="margin-bottom:1.25rem;">
+  <div class="dash-kpi">
+    <span class="dash-kpi-value">{{ eq.stats.total_manutencoes }}</span>
+    <span class="dash-kpi-label">Manutenções</span>
+  </div>
+  <div class="dash-kpi">
+    <span class="dash-kpi-value">{{ eq.stats.tempo_medio_dias if eq.stats.tempo_medio_dias is not none else '—' }}</span>
+    <span class="dash-kpi-label">Tempo médio (dias)</span>
+  </div>
+  <div class="dash-kpi">
+    <span class="dash-kpi-value" style="font-size:1.1rem;">{{ eq.stats.ultima_os or '—' }}</span>
+    <span class="dash-kpi-label">Última OS</span>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:1.25rem;">
+  <div class="panel-header">
+    <h3>Dados cadastrais</h3>
+  </div>
+  <div class="panel-body">
+    <dl class="dash-maint-meta" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.75rem;">
+      <div>
+        <dt>Tipo</dt>
+        <dd>{{ eq.tipo_label }}</dd>
+      </div>
+      <div>
+        <dt>Código / identificação</dt>
+        <dd>{{ eq.codigo }}</dd>
+      </div>
+      <div>
+        <dt>Patrimônio</dt>
+        <dd>{{ eq.patrimonio or '—' }}</dd>
+      </div>
+      <div>
+        <dt>Data de aquisição</dt>
+        <dd>{{ eq.data_aquisicao | formatar_data_curta if eq.data_aquisicao else '—' }}</dd>
+      </div>
+      <div>
+        <dt>Status</dt>
+        <dd>{{ eq.status_label }}</dd>
+      </div>
+      {% if eq.ordem_servico %}
+      <div>
+        <dt>OS atual</dt>
+        <dd>{{ eq.ordem_servico }}</dd>
+      </div>
+      {% endif %}
+      {% if eq.em_manutencao and eq.manutencao_aberta %}
+      <div>
+        <dt>Fase da OS</dt>
+        <dd><span class="badge fase-os fase-{{ eq.manutencao_aberta.fase }}">{{ eq.manutencao_aberta.fase_label }}</span></dd>
+      </div>
+      {% endif %}
+    </dl>
+    {% if eq.observacoes %}
+    <p class="dash-asset-obs" style="margin-top:0.75rem; white-space:pre-line;">{{ eq.observacoes }}</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if is_fiscal and eq.em_manutencao and eq.manutencao_aberta %}
+<div class="panel" style="margin-bottom:1.25rem;">
+  <div class="panel-header">
+    <h3>Acompanhamento da OS</h3>
+    <p>Registre observações e atualize dados enquanto o equipamento estiver em manutenção</p>
+  </div>
+  <div class="panel-body">
+    {% set item = eq %}
+    {% set next_url = url_for('equipamento_detalhe_route', ativo_id=eq.id) %}
+    {% set show_encerrar = true %}
+    {% include '_manutencao_os_acompanhar.html' %}
+  </div>
+</div>
+{% endif %}
+
+{% if is_fiscal and not eq.em_manutencao %}
+<div class="panel" style="margin-bottom:1.25rem;">
+  <div class="panel-header">
+    <h3>Abrir manutenção</h3>
+  </div>
+  <div class="panel-body">
+    <form method="post" action="{{ url_for('abrir_manutencao_route', ativo_id=eq.id) }}">
+      <input type="hidden" name="next" value="{{ url_for('equipamento_detalhe_route', ativo_id=eq.id) }}">
+      <div class="form-grid">
+        <div class="field">
+          <label>Número da OS</label>
+          <input type="text" name="os_numero" required>
+        </div>
+        <div class="field">
+          <label>Data de abertura</label>
+          <input type="date" name="data_abertura" value="{{ hoje }}" required>
+        </div>
+        <div class="field">
+          <label>Responsável</label>
+          <input type="text" name="responsavel" required>
+        </div>
+        <div class="field">
+          <label>Local</label>
+          <select name="local">
+            {% for valor, label in locais_manutencao.items() %}
+            <option value="{{ valor }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field full">
+          <label>Observações</label>
+          <textarea name="observacoes_abertura" rows="3" required></textarea>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Abrir OS</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="panel" style="margin-bottom:1.25rem;">
+  <div class="panel-header">
+    <h3>O que o fiscal registrou</h3>
+    <p>Linha do tempo de ações neste equipamento — cadastro, OS, fases e observações</p>
+  </div>
+  <div class="panel-body">
+    {% if eq.historico_fiscal %}
+    <div class="admin-hist-list">
+      {% for reg in eq.historico_fiscal %}
+      {% with link_equip=false, show_admin_edit=false %}
+      {% include '_registro_fiscal_card.html' %}
+      {% endwith %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h4>Nenhuma ação registrada ainda</h4>
+      <p>Quando o fiscal cadastrar, abrir OS ou anotar andamento, aparece aqui.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-header">
+    <h3>Ciclos de ordem de serviço</h3>
+    <p>Abertura, fases, anotações e encerramento de cada OS</p>
+  </div>
+  <div class="panel-body">
+    {% if eq.manutencoes %}
+    <div class="report-timeline">
+      {% for m in eq.manutencoes %}
+      <article class="report-entry">
+        <div class="report-entry-head">
+          <span class="badge {% if m.aberta %}status-manutencao{% else %}status-ok{% endif %}">
+            {% if m.aberta %}Aberta{% else %}Encerrada{% endif %}
+          </span>
+          <span class="dash-os-tag">OS {{ m.os_numero }}</span>
+          {% if m.fase_label %}<span class="badge fase-os fase-{{ m.fase }}">{{ m.fase_label }}</span>{% endif %}
+          <span class="report-meta">{{ m.responsavel }}</span>
+        </div>
+        <p class="report-detalhes">
+          Abertura: {{ m.data_abertura | formatar_data_curta }}
+          {% if m.data_conclusao %} · Conclusão: {{ m.data_conclusao | formatar_data_curta }}{% endif %}
+        </p>
+        {% if m.observacoes_abertura %}
+        <p class="report-detalhes"><strong>Motivo:</strong> {{ m.observacoes_abertura }}</p>
+        {% endif %}
+        {% if m.anotacoes %}
+        <div class="os-anotacoes-inline">
+          <strong>Observações durante a OS:</strong>
+          {% for n in m.anotacoes %}
+          <p class="report-detalhes">· {{ n.criado_em | formatar_data }} — {{ n.usuario_nome or n.usuario }}: {{ n.texto }}</p>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if m.observacoes_encerramento %}
+        <p class="report-detalhes"><strong>Encerramento:</strong> {{ m.observacoes_encerramento }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h4>Nenhuma manutenção registrada</h4>
+      <p>Quando uma OS for aberta, o ciclo aparecerá aqui.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

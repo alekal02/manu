@@ -1,0 +1,91 @@
+{% set os = item.manutencao_aberta %}
+{% if os %}
+{% if show_encerrar %}
+<form method="post" action="{{ url_for('encerrar_manutencao_route', ativo_id=item.id) }}" class="checkin-form os-encerrar-form">
+  <input type="hidden" name="next" value="{{ next_url }}">
+  <div class="checkin-actions os-actions-top">
+    <button type="submit" class="btn btn-primary btn-sm">Encerrar e voltar para Ativo</button>
+  </div>
+  <div class="form-grid checkin-grid">
+    <div class="field">
+      <label>Data de conclusão</label>
+      <input type="date" name="data_conclusao" value="{{ hoje }}" required>
+    </div>
+    <div class="field full">
+      <label>Observações de encerramento</label>
+      <textarea name="observacoes_encerramento" rows="2" required placeholder="Serviço realizado..."></textarea>
+    </div>
+  </div>
+</form>
+<div class="os-acompanhar-divider"></div>
+{% endif %}
+
+<div class="os-acompanhar{% if compact %} os-acompanhar-compact{% endif %}">
+  <p class="import-help">Informações da OS são cumulativas: você pode adicionar e atualizar, mas não apagar o que já foi registrado.</p>
+  <div class="os-acompanhar-resumo">
+    <p class="import-help">
+      <strong>OS {{ os.os_numero }}</strong>
+      · {{ os.data_abertura | formatar_data_curta }}
+      · {{ os.responsavel or '—' }}
+      · <span class="badge fase-os fase-{{ os.fase }}">{{ os.fase_label }}</span>
+    </p>
+    {% if os.observacoes_abertura %}
+    <p class="report-detalhes"><strong>Motivo inicial:</strong> {{ os.observacoes_abertura }}</p>
+    {% endif %}
+  </div>
+
+  {% if not compact and os.anotacoes %}
+  <div class="os-anotacoes-list">
+    <h4 class="os-anotacoes-title">Observações registradas</h4>
+    <div class="report-timeline">
+      {% for n in os.anotacoes %}
+      <article class="report-entry os-anotacao-entry">
+        <div class="report-entry-head">
+          <span class="report-meta">{{ n.criado_em | formatar_data }}</span>
+          <span class="report-meta">{{ n.usuario_nome or n.usuario }}</span>
+        </div>
+        <p class="report-detalhes">{{ n.texto }}</p>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('salvar_acompanhamento_os_aberta_route', ativo_id=item.id) }}" class="checkin-form">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <div class="field full">
+      <label>Nova observação</label>
+      <textarea name="texto_anotacao" rows="{% if compact %}2{% else %}3{% endif %}" placeholder="Andamento, peças, pendências..."></textarea>
+    </div>
+    <div class="form-grid checkin-grid">
+      <div class="field">
+        <label>Responsável</label>
+        <input type="text" name="responsavel" value="{{ os.responsavel or '' }}" placeholder="Responsável atual">
+      </div>
+      <div class="field">
+        <label>Local</label>
+        <select name="local">
+          {% for valor, label in locais_manutencao.items() %}
+          <option value="{{ valor }}" {% if item.local == valor %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Fase da OS</label>
+        <select name="fase" required>
+          {% for valor, label in fases_os.items() %}
+          <option value="{{ valor }}" {% if os.fase == valor %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field full">
+        <label>Observação da mudança de fase (opcional)</label>
+        <textarea name="observacao_fase" rows="2" placeholder="Motivo da mudança de fase..."></textarea>
+      </div>
+    </div>
+    <div class="checkin-actions">
+      <button type="submit" class="btn btn-primary btn-sm">Salvar alterações</button>
+    </div>
+  </form>
+</div>
+{% endif %}

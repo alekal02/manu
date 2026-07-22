@@ -1,0 +1,58 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Perfil Admin{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <h2>Meu perfil</h2>
+  <p>Conta administrativa — {{ admin.usuario }}</p>
+</section>
+
+<div class="perfil-grid">
+  <div class="panel">
+    <div class="panel-header"><h3>Conta administrador</h3></div>
+    <div class="panel-body">
+      <dl class="info-grid">
+        <div class="info-item">
+          <dt>Usuário</dt>
+          <dd>{{ admin.usuario }}</dd>
+        </div>
+        <div class="info-item">
+          <dt>Nome</dt>
+          <dd>{{ admin.nome }}</dd>
+        </div>
+        <div class="info-item">
+          <dt>Perfil</dt>
+          <dd><span class="badge nivel-admin">Administrador</span></dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <h3>Alterar senha</h3>
+        <p>Mínimo de 4 caracteres</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <form method="post" class="perfil-form">
+        <div class="field">
+          <label for="senha_atual">Senha atual</label>
+          <input type="password" id="senha_atual" name="senha_atual" required>
+        </div>
+        <div class="field">
+          <label for="nova_senha">Nova senha</label>
+          <input type="password" id="nova_senha" name="nova_senha" minlength="4" required>
+        </div>
+        <div class="field">
+          <label for="confirmar_senha">Confirmar nova senha</label>
+          <input type="password" id="confirmar_senha" name="confirmar_senha" minlength="4" required>
+        </div>
+        <button type="submit" class="btn btn-admin">Salvar nova senha</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

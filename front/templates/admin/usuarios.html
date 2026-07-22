@@ -1,0 +1,141 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Usuários — Admin{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h2>Gestão de usuários</h2>
+      <p>Controle logins e senhas de gerentes e fiscais em todas as filiais.</p>
+    </div>
+  </div>
+</section>
+
+<div class="panel">
+  <div class="panel-header">
+    <div>
+      <h3>Novo usuário</h3>
+      <p>Cadastre gerente ou fiscal em uma filial</p>
+    </div>
+  </div>
+  <div class="panel-body">
+    <form method="post" action="{{ url_for('admin_novo_usuario') }}" class="form-grid admin-form-inline">
+      <div class="field">
+        <label for="novo-base">Filial</label>
+        <select id="novo-base" name="base_id" required>
+          <option value="">Selecione...</option>
+          {% for base in bases %}
+          <option value="{{ base.id }}" {% if filtro_base == base.id %}selected{% endif %}>{{ base.codigo }} — {{ base.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="novo-usuario">Login</label>
+        <input type="text" id="novo-usuario" name="usuario" placeholder="ex: gerente" required>
+      </div>
+      <div class="field">
+        <label for="novo-nome">Nome exibido</label>
+        <input type="text" id="novo-nome" name="nome" placeholder="Nome completo" required>
+      </div>
+      <div class="field">
+        <label for="novo-nivel">Perfil</label>
+        <select id="novo-nivel" name="nivel" required>
+          <option value="gerente">Gerente</option>
+          <option value="fiscal">Fiscal</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="novo-senha">Senha inicial</label>
+        <input type="text" id="novo-senha" name="senha" placeholder="Mín. 4 caracteres" required minlength="4">
+      </div>
+      <div class="field field-action">
+        <label>&nbsp;</label>
+        <button type="submit" class="btn btn-admin">Criar usuário</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-header">
+    <div>
+      <h3>Usuários cadastrados</h3>
+      <p>{{ usuarios|length }} usuário(s)</p>
+    </div>
+    <form method="get" action="{{ url_for('admin_usuarios') }}" class="filter-form">
+      <select name="base_id" onchange="this.form.submit()">
+        <option value="">Todas as filiais</option>
+        {% for base in bases %}
+        <option value="{{ base.id }}" {% if filtro_base == base.id %}selected{% endif %}>{{ base.codigo }} — {{ base.nome }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+  <div class="panel-body flush">
+    {% if usuarios %}
+    <div class="admin-user-list">
+      {% for u in usuarios %}
+      <div class="admin-user-card {% if not u.ativo %}inactive{% endif %}">
+        <div class="admin-user-header">
+          <div>
+            <div class="admin-user-title">
+              <span class="badge nivel-{{ u.nivel }}">{{ u.nivel | capitalize }}</span>
+              {% if not u.ativo %}<span class="badge status-inativo">Inativo</span>{% endif %}
+            </div>
+            <h4>{{ u.nome }}</h4>
+            <p class="admin-user-meta">
+              Login: <strong>{{ u.usuario }}</strong>
+              · Filial {{ u.base_codigo }} — {{ u.base_nome }}
+            </p>
+          </div>
+        </div>
+
+        <div class="admin-user-actions">
+          <details class="admin-action-details">
+            <summary>Editar dados</summary>
+            <form method="post" action="{{ url_for('admin_editar_usuario', user_id=u.id) }}" class="admin-inline-form">
+              <div class="field">
+                <label>Nome</label>
+                <input type="text" name="nome" value="{{ u.nome }}" required>
+              </div>
+              <div class="field">
+                <label>Perfil</label>
+                <select name="nivel">
+                  <option value="gerente" {% if u.nivel == 'gerente' %}selected{% endif %}>Gerente</option>
+                  <option value="fiscal" {% if u.nivel == 'fiscal' %}selected{% endif %}>Fiscal</option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-secondary btn-sm">Salvar</button>
+            </form>
+          </details>
+
+          <details class="admin-action-details">
+            <summary>Redefinir senha</summary>
+            <form method="post" action="{{ url_for('admin_reset_senha', user_id=u.id) }}" class="admin-inline-form">
+              <div class="field">
+                <label>Nova senha</label>
+                <input type="text" name="nova_senha" placeholder="Mín. 4 caracteres" required minlength="4">
+              </div>
+              <button type="submit" class="btn btn-admin btn-sm">Redefinir</button>
+            </form>
+          </details>
+
+          <form method="post" action="{{ url_for('admin_toggle_user', user_id=u.id) }}">
+            <button type="submit" class="btn btn-secondary btn-sm">
+              {{ 'Ativar' if not u.ativo else 'Desativar' }} acesso
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h4>Nenhum usuário encontrado</h4>
+      <p>Crie um usuário ou altere o filtro de filial.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
